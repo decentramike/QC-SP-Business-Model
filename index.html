@@ -4,61 +4,63 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Filecoin Storage Provider Business Plan</title>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/recharts@2.5.0/dist/Recharts.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; padding: 0; background: #f3f4f6; }
+    </style>
 </head>
 <body>
     <div id="root"></div>
 
-    <script type="text/babel">
-        const { useState } = React;
-        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } = Recharts;
+    <!-- Load libraries -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 
-        const FilecoinBusinessPlan = () => {
-          const [storageCapacity, setStorageCapacity] = useState(10); // PiB
-          const [powerCost, setPowerCost] = useState(0.065); // CAD per kWh
+    <script>
+        const { useState, createElement: h } = React;
+
+        function FilecoinBusinessPlan() {
+          const [storageCapacity, setStorageCapacity] = useState(10);
+          const [powerCost, setPowerCost] = useState(0.065);
           const [datacapMultiplier, setDatacapMultiplier] = useState(10);
 
           // Hardware assumptions
-          const storagePerServer = 0.5; // PiB per server
+          const storagePerServer = 0.5;
           const serversNeeded = Math.ceil(storageCapacity / storagePerServer);
-          const costPerServer = 45000; // CAD
+          const costPerServer = 45000;
           const totalHardwareCost = serversNeeded * costPerServer;
 
           // Financing assumptions
           const downPayment = 0.20;
-          const loanTerm = 36; // months
-          const interestRate = 0.07; // 7% annual
+          const loanTerm = 36;
+          const interestRate = 0.07;
           const monthlyRate = interestRate / 12;
           const loanAmount = totalHardwareCost * (1 - downPayment);
           const monthlyPayment = loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, loanTerm)) / (Math.pow(1 + monthlyRate, loanTerm) - 1);
 
-          // Operational costs (monthly)
-          const powerPerServer = 2.5; // kW average
+          // Operational costs
+          const powerPerServer = 2.5;
           const totalPowerKw = powerPerServer * serversNeeded;
           const monthlyPowerCost = totalPowerKw * 24 * 30 * powerCost;
 
-          const spacePerServer = 4; // U per server
+          const spacePerServer = 4;
           const rackSpaceNeeded = Math.ceil(serversNeeded * spacePerServer / 42);
-          const costPerRackSpace = 350; // CAD per month for colocation
+          const costPerRackSpace = 350;
           const monthlySpaceCost = rackSpaceNeeded * costPerRackSpace;
 
-          const monthlyBandwidth = 500; // CAD for 10Gbps unmetered
-          const monthlyMaintenance = serversNeeded * 100; // CAD per server
+          const monthlyBandwidth = 500;
+          const monthlyMaintenance = serversNeeded * 100;
           const monthlyInsurance = 400;
-          const monthlySalary = 6500; // 1 FTE operator/admin
+          const monthlySalary = 6500;
 
           const totalMonthlyOpex = monthlyPowerCost + monthlySpaceCost + monthlyBandwidth +
                                    monthlyMaintenance + monthlyInsurance + monthlySalary;
 
-          // Revenue assumptions (with Datacap)
-          const baseBlockReward = 0.15; // FIL per TiB per day (base)
+          // Revenue assumptions
+          const baseBlockReward = 0.15;
           const datacapBonus = baseBlockReward * datacapMultiplier;
           const totalRewardRate = baseBlockReward + datacapBonus;
-          const filPrice = 5.5; // USD
+          const filPrice = 5.5;
           const usdToCad = 1.38;
           const filPriceCad = filPrice * usdToCad;
 
@@ -67,7 +69,6 @@
 
           // Calculate projections
           const months = 48;
-          const projections = [];
           let cumulativeCashFlow = -(totalHardwareCost * downPayment);
           let breakEvenMonth = null;
 
@@ -81,386 +82,289 @@
             if (breakEvenMonth === null && cumulativeCashFlow > 0) {
               breakEvenMonth = month;
             }
-
-            projections.push({
-              month,
-              revenue: Math.round(monthlyRevenue),
-              opex: Math.round(totalMonthlyOpex),
-              capex: Math.round(monthlyCapex),
-              profit: Math.round(monthlyProfit),
-              cumulative: Math.round(cumulativeCashFlow)
-            });
           }
 
-          const yearlyProfit = projections[11].profit * 12;
+          const yearlyProfit = monthlyRevenue * 12 - (totalMonthlyOpex * 12) - (monthlyPayment * 12);
           const roi = (yearlyProfit / totalHardwareCost) * 100;
 
-          return (
-            <div className="w-full max-w-6xl mx-auto p-6 bg-white">
-              <h1 className="text-3xl font-bold mb-6 text-blue-900">Filecoin Storage Provider Business Plan</h1>
-              <p className="text-lg mb-6 text-gray-700">Quebec, Canada - Strategic Analysis & Financial Projections</p>
+          return h('div', { className: 'w-full max-w-6xl mx-auto p-6 bg-white min-h-screen' },
+            h('h1', { className: 'text-3xl font-bold mb-6 text-blue-900' }, 'Filecoin Storage Provider Business Plan'),
+            h('p', { className: 'text-lg mb-6 text-gray-700' }, 'Quebec, Canada - Strategic Analysis & Financial Projections'),
 
-              {/* Input Controls */}
-              <div className="bg-blue-50 p-6 rounded-lg mb-6">
-                <h2 className="text-xl font-bold mb-4">Configuration</h2>
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Storage Capacity (PiB)</label>
-                    <input
-                      type="number"
-                      value={storageCapacity}
-                      onChange={(e) => setStorageCapacity(Number(e.target.value))}
-                      className="w-full p-2 border rounded"
-                      min="1"
-                      max="100"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Power Cost (CAD/kWh)</label>
-                    <input
-                      type="number"
-                      value={powerCost}
-                      onChange={(e) => setPowerCost(Number(e.target.value))}
-                      className="w-full p-2 border rounded"
-                      step="0.001"
-                      min="0.03"
-                      max="0.15"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Datacap Multiplier</label>
-                    <input
-                      type="number"
-                      value={datacapMultiplier}
-                      onChange={(e) => setDatacapMultiplier(Number(e.target.value))}
-                      className="w-full p-2 border rounded"
-                      min="1"
-                      max="100"
-                    />
-                  </div>
-                </div>
-              </div>
+            // Configuration
+            h('div', { className: 'bg-blue-50 p-6 rounded-lg mb-6' },
+              h('h2', { className: 'text-xl font-bold mb-4' }, 'Configuration'),
+              h('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-4' },
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Storage Capacity (PiB)'),
+                  h('input', {
+                    type: 'number',
+                    value: storageCapacity,
+                    onChange: (e) => setStorageCapacity(Number(e.target.value)),
+                    className: 'w-full p-2 border rounded',
+                    min: 1,
+                    max: 100
+                  })
+                ),
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Power Cost (CAD/kWh)'),
+                  h('input', {
+                    type: 'number',
+                    value: powerCost,
+                    onChange: (e) => setPowerCost(Number(e.target.value)),
+                    className: 'w-full p-2 border rounded',
+                    step: 0.001,
+                    min: 0.03,
+                    max: 0.15
+                  })
+                ),
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Datacap Multiplier'),
+                  h('input', {
+                    type: 'number',
+                    value: datacapMultiplier,
+                    onChange: (e) => setDatacapMultiplier(Number(e.target.value)),
+                    className: 'w-full p-2 border rounded',
+                    min: 1,
+                    max: 100
+                  })
+                )
+              )
+            ),
 
-              {/* Executive Summary */}
-              <div className="mb-8">
-                <h2 className="text-2xl font-bold mb-4 text-blue-900">Executive Summary</h2>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-green-50 p-4 rounded-lg">
-                    <div className="text-sm text-gray-600">Initial Investment</div>
-                    <div className="text-2xl font-bold text-green-700">
-                      ${Math.round(totalHardwareCost * downPayment).toLocaleString()} CAD
-                    </div>
-                    <div className="text-xs text-gray-500">20% down payment</div>
-                  </div>
-                  <div className="bg-blue-50 p-4 rounded-lg">
-                    <div className="text-sm text-gray-600">Monthly Revenue (Steady State)</div>
-                    <div className="text-2xl font-bold text-blue-700">
-                      ${Math.round(monthlyRevenue).toLocaleString()} CAD
-                    </div>
-                    <div className="text-xs text-gray-500">With Datacap {datacapMultiplier}x multiplier</div>
-                  </div>
-                  <div className="bg-orange-50 p-4 rounded-lg">
-                    <div className="text-sm text-gray-600">Break-Even Point</div>
-                    <div className="text-2xl font-bold text-orange-700">
-                      {breakEvenMonth ? `${breakEvenMonth} months` : 'N/A'}
-                    </div>
-                    <div className="text-xs text-gray-500">Cumulative cash flow positive</div>
-                  </div>
-                  <div className="bg-purple-50 p-4 rounded-lg">
-                    <div className="text-sm text-gray-600">Annual ROI (Year 1)</div>
-                    <div className="text-2xl font-bold text-purple-700">
-                      {roi.toFixed(1)}%
-                    </div>
-                    <div className="text-xs text-gray-500">Based on hardware investment</div>
-                  </div>
-                </div>
-              </div>
+            // Executive Summary
+            h('div', { className: 'mb-8' },
+              h('h2', { className: 'text-2xl font-bold mb-4 text-blue-900' }, 'Executive Summary'),
+              h('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-4' },
+                h('div', { className: 'bg-green-50 p-4 rounded-lg' },
+                  h('div', { className: 'text-sm text-gray-600' }, 'Initial Investment'),
+                  h('div', { className: 'text-2xl font-bold text-green-700' },
+                    '$' + Math.round(totalHardwareCost * downPayment).toLocaleString() + ' CAD'
+                  ),
+                  h('div', { className: 'text-xs text-gray-500' }, '20% down payment')
+                ),
+                h('div', { className: 'bg-blue-50 p-4 rounded-lg' },
+                  h('div', { className: 'text-sm text-gray-600' }, 'Monthly Revenue (Steady State)'),
+                  h('div', { className: 'text-2xl font-bold text-blue-700' },
+                    '$' + Math.round(monthlyRevenue).toLocaleString() + ' CAD'
+                  ),
+                  h('div', { className: 'text-xs text-gray-500' }, 'With Datacap ' + datacapMultiplier + 'x multiplier')
+                ),
+                h('div', { className: 'bg-orange-50 p-4 rounded-lg' },
+                  h('div', { className: 'text-sm text-gray-600' }, 'Break-Even Point'),
+                  h('div', { className: 'text-2xl font-bold text-orange-700' },
+                    breakEvenMonth ? breakEvenMonth + ' months' : 'N/A'
+                  ),
+                  h('div', { className: 'text-xs text-gray-500' }, 'Cumulative cash flow positive')
+                ),
+                h('div', { className: 'bg-purple-50 p-4 rounded-lg' },
+                  h('div', { className: 'text-sm text-gray-600' }, 'Annual ROI (Year 1)'),
+                  h('div', { className: 'text-2xl font-bold text-purple-700' },
+                    roi.toFixed(1) + '%'
+                  ),
+                  h('div', { className: 'text-xs text-gray-500' }, 'Based on hardware investment')
+                )
+              )
+            ),
 
-              {/* Capital Expenditure Breakdown */}
-              <div className="mb-8">
-                <h2 className="text-2xl font-bold mb-4 text-blue-900">Capital Expenditure</h2>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left py-2">Item</th>
-                        <th className="text-right py-2">Quantity</th>
-                        <th className="text-right py-2">Unit Cost (CAD)</th>
-                        <th className="text-right py-2">Total (CAD)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="border-b">
-                        <td className="py-2">Storage Servers (AMD EPYC, 500TB each)</td>
-                        <td className="text-right">{serversNeeded}</td>
-                        <td className="text-right">${costPerServer.toLocaleString()}</td>
-                        <td className="text-right font-bold">${totalHardwareCost.toLocaleString()}</td>
-                      </tr>
-                      <tr className="border-b">
-                        <td className="py-2">Down Payment (20%)</td>
-                        <td className="text-right">-</td>
-                        <td className="text-right">-</td>
-                        <td className="text-right font-bold text-red-600">
-                          $({Math.round(totalHardwareCost * downPayment).toLocaleString()})
-                        </td>
-                      </tr>
-                      <tr className="border-b">
-                        <td className="py-2">Financed Amount</td>
-                        <td className="text-right">36 months</td>
-                        <td className="text-right">7% APR</td>
-                        <td className="text-right font-bold">${Math.round(loanAmount).toLocaleString()}</td>
-                      </tr>
-                      <tr>
-                        <td className="py-2 font-bold">Monthly Loan Payment</td>
-                        <td className="text-right">-</td>
-                        <td className="text-right">-</td>
-                        <td className="text-right font-bold text-blue-700">
-                          ${Math.round(monthlyPayment).toLocaleString()}/mo
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+            // Capital Expenditure
+            h('div', { className: 'mb-8' },
+              h('h2', { className: 'text-2xl font-bold mb-4 text-blue-900' }, 'Capital Expenditure'),
+              h('div', { className: 'bg-gray-50 p-4 rounded-lg overflow-x-auto' },
+                h('table', { className: 'w-full text-sm' },
+                  h('thead', {},
+                    h('tr', { className: 'border-b' },
+                      h('th', { className: 'text-left py-2' }, 'Item'),
+                      h('th', { className: 'text-right py-2' }, 'Quantity'),
+                      h('th', { className: 'text-right py-2' }, 'Unit Cost (CAD)'),
+                      h('th', { className: 'text-right py-2' }, 'Total (CAD)')
+                    )
+                  ),
+                  h('tbody', {},
+                    h('tr', { className: 'border-b' },
+                      h('td', { className: 'py-2' }, 'Storage Servers (AMD EPYC, 500TB each)'),
+                      h('td', { className: 'text-right' }, serversNeeded),
+                      h('td', { className: 'text-right' }, '$' + costPerServer.toLocaleString()),
+                      h('td', { className: 'text-right font-bold' }, '$' + totalHardwareCost.toLocaleString())
+                    ),
+                    h('tr', { className: 'border-b' },
+                      h('td', { className: 'py-2' }, 'Down Payment (20%)'),
+                      h('td', { className: 'text-right' }, '-'),
+                      h('td', { className: 'text-right' }, '-'),
+                      h('td', { className: 'text-right font-bold text-red-600' },
+                        '$(' + Math.round(totalHardwareCost * downPayment).toLocaleString() + ')'
+                      )
+                    ),
+                    h('tr', { className: 'border-b' },
+                      h('td', { className: 'py-2' }, 'Financed Amount'),
+                      h('td', { className: 'text-right' }, '36 months'),
+                      h('td', { className: 'text-right' }, '7% APR'),
+                      h('td', { className: 'text-right font-bold' }, '$' + Math.round(loanAmount).toLocaleString())
+                    ),
+                    h('tr', {},
+                      h('td', { className: 'py-2 font-bold' }, 'Monthly Loan Payment'),
+                      h('td', { className: 'text-right' }, '-'),
+                      h('td', { className: 'text-right' }, '-'),
+                      h('td', { className: 'text-right font-bold text-blue-700' },
+                        '$' + Math.round(monthlyPayment).toLocaleString() + '/mo'
+                      )
+                    )
+                  )
+                )
+              )
+            ),
 
-              {/* Operating Expenses */}
-              <div className="mb-8">
-                <h2 className="text-2xl font-bold mb-4 text-blue-900">Monthly Operating Expenses</h2>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left py-2">Expense Category</th>
-                        <th className="text-right py-2">Details</th>
-                        <th className="text-right py-2">Monthly Cost (CAD)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="border-b">
-                        <td className="py-2">Electricity</td>
-                        <td className="text-right">{totalPowerKw.toFixed(1)} kW × ${powerCost}/kWh</td>
-                        <td className="text-right">${Math.round(monthlyPowerCost).toLocaleString()}</td>
-                      </tr>
-                      <tr className="border-b">
-                        <td className="py-2">Datacenter Space</td>
-                        <td className="text-right">{rackSpaceNeeded} racks × $350/rack</td>
-                        <td className="text-right">${Math.round(monthlySpaceCost).toLocaleString()}</td>
-                      </tr>
-                      <tr className="border-b">
-                        <td className="py-2">Bandwidth</td>
-                        <td className="text-right">10Gbps unmetered</td>
-                        <td className="text-right">${monthlyBandwidth.toLocaleString()}</td>
-                      </tr>
-                      <tr className="border-b">
-                        <td className="py-2">Maintenance & Spares</td>
-                        <td className="text-right">{serversNeeded} servers × $100</td>
-                        <td className="text-right">${Math.round(monthlyMaintenance).toLocaleString()}</td>
-                      </tr>
-                      <tr className="border-b">
-                        <td className="py-2">Insurance</td>
-                        <td className="text-right">Equipment & liability</td>
-                        <td className="text-right">${monthlyInsurance.toLocaleString()}</td>
-                      </tr>
-                      <tr className="border-b">
-                        <td className="py-2">Personnel</td>
-                        <td className="text-right">1 FTE operator/admin</td>
-                        <td className="text-right">${monthlySalary.toLocaleString()}</td>
-                      </tr>
-                      <tr className="font-bold">
-                        <td className="py-2">Total Monthly OPEX</td>
-                        <td className="text-right">-</td>
-                        <td className="text-right text-red-600">${Math.round(totalMonthlyOpex).toLocaleString()}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+            // Monthly Operating Expenses
+            h('div', { className: 'mb-8' },
+              h('h2', { className: 'text-2xl font-bold mb-4 text-blue-900' }, 'Monthly Operating Expenses'),
+              h('div', { className: 'bg-gray-50 p-4 rounded-lg overflow-x-auto' },
+                h('table', { className: 'w-full text-sm' },
+                  h('thead', {},
+                    h('tr', { className: 'border-b' },
+                      h('th', { className: 'text-left py-2' }, 'Expense Category'),
+                      h('th', { className: 'text-right py-2' }, 'Details'),
+                      h('th', { className: 'text-right py-2' }, 'Monthly Cost (CAD)')
+                    )
+                  ),
+                  h('tbody', {},
+                    h('tr', { className: 'border-b' },
+                      h('td', { className: 'py-2' }, 'Electricity'),
+                      h('td', { className: 'text-right' }, totalPowerKw.toFixed(1) + ' kW × $' + powerCost + '/kWh'),
+                      h('td', { className: 'text-right' }, '$' + Math.round(monthlyPowerCost).toLocaleString())
+                    ),
+                    h('tr', { className: 'border-b' },
+                      h('td', { className: 'py-2' }, 'Datacenter Space'),
+                      h('td', { className: 'text-right' }, rackSpaceNeeded + ' racks × $350/rack'),
+                      h('td', { className: 'text-right' }, '$' + Math.round(monthlySpaceCost).toLocaleString())
+                    ),
+                    h('tr', { className: 'border-b' },
+                      h('td', { className: 'py-2' }, 'Bandwidth'),
+                      h('td', { className: 'text-right' }, '10Gbps unmetered'),
+                      h('td', { className: 'text-right' }, '$' + monthlyBandwidth.toLocaleString())
+                    ),
+                    h('tr', { className: 'border-b' },
+                      h('td', { className: 'py-2' }, 'Maintenance & Spares'),
+                      h('td', { className: 'text-right' }, serversNeeded + ' servers × $100'),
+                      h('td', { className: 'text-right' }, '$' + Math.round(monthlyMaintenance).toLocaleString())
+                    ),
+                    h('tr', { className: 'border-b' },
+                      h('td', { className: 'py-2' }, 'Insurance'),
+                      h('td', { className: 'text-right' }, 'Equipment & liability'),
+                      h('td', { className: 'text-right' }, '$' + monthlyInsurance.toLocaleString())
+                    ),
+                    h('tr', { className: 'border-b' },
+                      h('td', { className: 'py-2' }, 'Personnel'),
+                      h('td', { className: 'text-right' }, '1 FTE operator/admin'),
+                      h('td', { className: 'text-right' }, '$' + monthlySalary.toLocaleString())
+                    ),
+                    h('tr', { className: 'font-bold' },
+                      h('td', { className: 'py-2' }, 'Total Monthly OPEX'),
+                      h('td', { className: 'text-right' }, '-'),
+                      h('td', { className: 'text-right text-red-600' }, '$' + Math.round(totalMonthlyOpex).toLocaleString())
+                    )
+                  )
+                )
+              )
+            ),
 
-              {/* Revenue Model */}
-              <div className="mb-8">
-                <h2 className="text-2xl font-bold mb-4 text-blue-900">Revenue Model (with Datacap)</h2>
-                <div className="bg-green-50 p-4 rounded-lg mb-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <div className="text-sm text-gray-600">Base Block Rewards</div>
-                      <div className="text-lg">{baseBlockReward} FIL/TiB/day</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-gray-600">Datacap Bonus ({datacapMultiplier}x)</div>
-                      <div className="text-lg">{datacapBonus.toFixed(2)} FIL/TiB/day</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-gray-600">Total Rewards Rate</div>
-                      <div className="text-lg font-bold">{totalRewardRate.toFixed(2)} FIL/TiB/day</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-gray-600">FIL Price</div>
-                      <div className="text-lg">${filPrice} USD (${filPriceCad.toFixed(2)} CAD)</div>
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="text-sm text-gray-600 mb-2">Monthly Revenue Calculation</div>
-                  <div className="text-lg">
-                    {storageCapacity} PiB × 1,024 TiB/PiB × {totalRewardRate.toFixed(2)} FIL/TiB/day × 30 days × ${filPriceCad.toFixed(2)} CAD/FIL
-                  </div>
-                  <div className="text-2xl font-bold text-green-700 mt-2">
-                    = ${Math.round(monthlyRevenue).toLocaleString()} CAD/month
-                  </div>
-                </div>
-              </div>
+            // Revenue Model
+            h('div', { className: 'mb-8' },
+              h('h2', { className: 'text-2xl font-bold mb-4 text-blue-900' }, 'Revenue Model (with Datacap)'),
+              h('div', { className: 'bg-green-50 p-4 rounded-lg mb-4' },
+                h('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-4 text-sm' },
+                  h('div', {},
+                    h('div', { className: 'text-gray-600' }, 'Base Block Rewards'),
+                    h('div', { className: 'text-lg' }, baseBlockReward + ' FIL/TiB/day')
+                  ),
+                  h('div', {},
+                    h('div', { className: 'text-gray-600' }, 'Datacap Bonus (' + datacapMultiplier + 'x)'),
+                    h('div', { className: 'text-lg' }, datacapBonus.toFixed(2) + ' FIL/TiB/day')
+                  ),
+                  h('div', {},
+                    h('div', { className: 'text-gray-600' }, 'Total Rewards Rate'),
+                    h('div', { className: 'text-lg font-bold' }, totalRewardRate.toFixed(2) + ' FIL/TiB/day')
+                  ),
+                  h('div', {},
+                    h('div', { className: 'text-gray-600' }, 'FIL Price'),
+                    h('div', { className: 'text-lg' }, '$' + filPrice + ' USD ($' + filPriceCad.toFixed(2) + ' CAD)')
+                  )
+                )
+              ),
+              h('div', { className: 'bg-gray-50 p-4 rounded-lg' },
+                h('div', { className: 'text-sm text-gray-600 mb-2' }, 'Monthly Revenue Calculation'),
+                h('div', { className: 'text-base' },
+                  storageCapacity + ' PiB × 1,024 TiB/PiB × ' + totalRewardRate.toFixed(2) +
+                  ' FIL/TiB/day × 30 days × $' + filPriceCad.toFixed(2) + ' CAD/FIL'
+                ),
+                h('div', { className: 'text-2xl font-bold text-green-700 mt-2' },
+                  '= $' + Math.round(monthlyRevenue).toLocaleString() + ' CAD/month'
+                )
+              )
+            ),
 
-              {/* Cash Flow Chart */}
-              <div className="mb-8">
-                <h2 className="text-2xl font-bold mb-4 text-blue-900">48-Month Cash Flow Projection</h2>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={projections}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" label={{ value: 'Month', position: 'insideBottom', offset: -5 }} />
-                    <YAxis label={{ value: 'CAD', angle: -90, position: 'insideLeft' }} />
-                    <Tooltip formatter={(value) => `$${value.toLocaleString()}`} />
-                    <Legend />
-                    <Line type="monotone" dataKey="cumulative" stroke="#10b981" name="Cumulative Cash Flow" strokeWidth={2} />
-                    <Line type="monotone" dataKey="profit" stroke="#3b82f6" name="Monthly Profit" strokeWidth={2} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+            // Key Metrics Summary
+            h('div', { className: 'bg-gray-100 p-6 rounded-lg mb-8' },
+              h('h2', { className: 'text-xl font-bold mb-3' }, 'Key Financial Metrics'),
+              h('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-4 text-sm' },
+                h('div', {},
+                  h('div', { className: 'font-bold mb-2' }, 'Monthly Cash Flow'),
+                  h('div', {}, 'Revenue: $' + Math.round(monthlyRevenue).toLocaleString()),
+                  h('div', {}, 'OPEX: $' + Math.round(totalMonthlyOpex).toLocaleString()),
+                  h('div', {}, 'Loan Payment: $' + Math.round(monthlyPayment).toLocaleString()),
+                  h('div', { className: 'font-bold text-green-700 mt-2' },
+                    'Net Profit: $' + Math.round(monthlyRevenue - totalMonthlyOpex - monthlyPayment).toLocaleString()
+                  )
+                ),
+                h('div', {},
+                  h('div', { className: 'font-bold mb-2' }, 'Annual Projections'),
+                  h('div', {}, 'Annual Revenue: $' + Math.round(monthlyRevenue * 12).toLocaleString()),
+                  h('div', {}, 'Annual OPEX: $' + Math.round(totalMonthlyOpex * 12).toLocaleString()),
+                  h('div', { className: 'font-bold text-green-700 mt-2' },
+                    'Annual Profit: $' + Math.round(yearlyProfit).toLocaleString()
+                  )
+                ),
+                h('div', {},
+                  h('div', { className: 'font-bold mb-2' }, 'Investment Returns'),
+                  h('div', {}, 'Total Investment: $' + totalHardwareCost.toLocaleString()),
+                  h('div', {}, 'Down Payment: $' + Math.round(totalHardwareCost * downPayment).toLocaleString()),
+                  h('div', {}, 'Break-even: ' + (breakEvenMonth || 'N/A') + ' months'),
+                  h('div', { className: 'font-bold text-green-700 mt-2' }, 'ROI: ' + roi.toFixed(1) + '%')
+                )
+              )
+            ),
 
-              {/* Monthly P&L Chart */}
-              <div className="mb-8">
-                <h2 className="text-2xl font-bold mb-4 text-blue-900">Monthly Profit & Loss Breakdown</h2>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={projections.slice(0, 24)}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip formatter={(value) => `$${value.toLocaleString()}`} />
-                    <Legend />
-                    <Bar dataKey="revenue" fill="#10b981" name="Revenue" />
-                    <Bar dataKey="opex" fill="#ef4444" name="Operating Expenses" />
-                    <Bar dataKey="capex" fill="#f59e0b" name="Loan Payment" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-
-              {/* Quebec Advantages */}
-              <div className="mb-8">
-                <h2 className="text-2xl font-bold mb-4 text-blue-900">Quebec Competitive Advantages</h2>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-blue-50 p-4 rounded-lg">
-                    <h3 className="font-bold mb-2 text-blue-900">⚡ Electricity Cost</h3>
-                    <ul className="text-sm space-y-1">
-                      <li>• Quebec: $0.055-0.075/kWh (Hydro-Québec)</li>
-                      <li>• US Average: $0.12-0.15/kWh</li>
-                      <li>• <span className="font-bold text-green-700">40-60% savings on power</span></li>
-                      <li>• 100% renewable hydroelectric</li>
-                    </ul>
-                  </div>
-                  <div className="bg-green-50 p-4 rounded-lg">
-                    <h3 className="font-bold mb-2 text-green-900">🏢 Regulatory Environment</h3>
-                    <ul className="text-sm space-y-1">
-                      <li>• Crypto-friendly province</li>
-                      <li>• Clear tax treatment (business income)</li>
-                      <li>• No state-level restrictions</li>
-                      <li>• Mature datacenter ecosystem</li>
-                    </ul>
-                  </div>
-                  <div className="bg-purple-50 p-4 rounded-lg">
-                    <h3 className="font-bold mb-2 text-purple-900">❄️ Climate Benefits</h3>
-                    <ul className="text-sm space-y-1">
-                      <li>• Cold climate = free cooling 6+ months/year</li>
-                      <li>• Reduced HVAC costs (15-25% savings)</li>
-                      <li>• Lower equipment failure rates</li>
-                      <li>• Extended hardware lifespan</li>
-                    </ul>
-                  </div>
-                  <div className="bg-orange-50 p-4 rounded-lg">
-                    <h3 className="font-bold mb-2 text-orange-900">💰 Financial Incentives</h3>
-                    <ul className="text-sm space-y-1">
-                      <li>• Investissement Québec programs</li>
-                      <li>• R&D tax credits (30-37.5%)</li>
-                      <li>• Lower corporate tax vs US (26.5%)</li>
-                      <li>• Accelerated CCA on hardware</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              {/* Risk Analysis */}
-              <div className="mb-8">
-                <h2 className="text-2xl font-bold mb-4 text-blue-900">Risk Analysis & Mitigation</h2>
-                <div className="space-y-3">
-                  <div className="bg-red-50 p-4 rounded-lg">
-                    <h3 className="font-bold text-red-900 mb-2">⚠️ FIL Price Volatility</h3>
-                    <p className="text-sm mb-2"><strong>Risk:</strong> FIL price fluctuations directly impact revenue</p>
-                    <p className="text-sm"><strong>Mitigation:</strong> Hedge with futures, maintain 6-month operating reserve, diversify into other networks (Storj, Arweave)</p>
-                  </div>
-                  <div className="bg-yellow-50 p-4 rounded-lg">
-                    <h3 className="font-bold text-yellow-900 mb-2">⚠️ Datacap Allocation Dependency</h3>
-                    <p className="text-sm mb-2"><strong>Risk:</strong> Heavy reliance on Datacap multiplier for profitability</p>
-                    <p className="text-sm"><strong>Mitigation:</strong> Build relationships with notaries, diversify client base, maintain high quality score (>95%)</p>
-                  </div>
-                  <div className="bg-orange-50 p-4 rounded-lg">
-                    <h3 className="font-bold text-orange-900 mb-2">⚠️ Hardware Obsolescence</h3>
-                    <p className="text-sm mb-2"><strong>Risk:</strong> Technology advances, reducing competitive position</p>
-                    <p className="text-sm"><strong>Mitigation:</strong> 3-year refresh cycle, modular architecture, stay current with Filecoin improvements</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Implementation Timeline */}
-              <div className="mb-8">
-                <h2 className="text-2xl font-bold mb-4 text-blue-900">Implementation Timeline</h2>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-4 bg-gray-50 p-3 rounded">
-                    <div className="w-24 font-bold text-sm">Month 0-1</div>
-                    <div className="text-sm">Company incorporation, datacenter selection, financing secured</div>
-                  </div>
-                  <div className="flex items-center gap-4 bg-gray-50 p-3 rounded">
-                    <div className="w-24 font-bold text-sm">Month 1-2</div>
-                    <div className="text-sm">Hardware procurement, space preparation, network provisioning</div>
-                  </div>
-                  <div className="flex items-center gap-4 bg-gray-50 p-3 rounded">
-                    <div className="w-24 font-bold text-sm">Month 2-3</div>
-                    <div className="text-sm">Installation, Filecoin node setup, initial sealing operations</div>
-                  </div>
-                  <div className="flex items-center gap-4 bg-blue-50 p-3 rounded">
-                    <div className="w-24 font-bold text-sm">Month 3+</div>
-                    <div className="text-sm font-bold">Full operational capacity, Datacap applications, revenue generation</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Key Assumptions */}
-              <div className="bg-gray-100 p-6 rounded-lg">
-                <h2 className="text-xl font-bold mb-3">Key Assumptions</h2>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <ul className="space-y-1">
-                      <li>• FIL price: $5.50 USD stable</li>
-                      <li>• USD/CAD: 1.38 exchange rate</li>
-                      <li>• Datacap multiplier: {datacapMultiplier}x maintained</li>
-                      <li>• 95% uptime/quality score</li>
-                      <li>• Hardware lifespan: 4-5 years</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <ul className="space-y-1">
-                      <li>• Quebec power: ${powerCost}/kWh</li>
-                      <li>• No regulatory changes</li>
-                      <li>• Steady state reached month 3</li>
-                      <li>• No slashing penalties</li>
-                      <li>• 7% financing rate</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            </div>
+            // Key Assumptions
+            h('div', { className: 'bg-blue-50 p-6 rounded-lg' },
+              h('h2', { className: 'text-xl font-bold mb-3' }, 'Key Assumptions'),
+              h('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-4 text-sm' },
+                h('ul', { className: 'space-y-1' },
+                  h('li', {}, '• FIL price: $5.50 USD stable'),
+                  h('li', {}, '• USD/CAD: 1.38 exchange rate'),
+                  h('li', {}, '• Datacap multiplier: ' + datacapMultiplier + 'x maintained'),
+                  h('li', {}, '• 95% uptime/quality score'),
+                  h('li', {}, '• Hardware lifespan: 4-5 years')
+                ),
+                h('ul', { className: 'space-y-1' },
+                  h('li', {}, '• Quebec power: $' + powerCost + '/kWh'),
+                  h('li', {}, '• No regulatory changes'),
+                  h('li', {}, '• Steady state reached month 3'),
+                  h('li', {}, '• No slashing penalties'),
+                  h('li', {}, '• 7% financing rate')
+                )
+              )
+            )
           );
-        };
+        }
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<FilecoinBusinessPlan />);
+        // Render the app
+        try {
+          const root = ReactDOM.createRoot(document.getElementById('root'));
+          root.render(React.createElement(FilecoinBusinessPlan));
+          console.log('✅ App loaded successfully!');
+        } catch (error) {
+          console.error('❌ Error:', error);
+          document.getElementById('root').innerHTML = '<div style="padding: 2rem; color: red;">Error loading app. Check console.</div>';
+        }
     </script>
 </body>
 </html>
