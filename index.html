@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Filecoin Storage Provider Business Plan</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/recharts@2.5.0/dist/Recharts.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } = Recharts;
+
+        const FilecoinBusinessPlan = () => {
+          const [storageCapacity, setStorageCapacity] = useState(10); // PiB
+          const [powerCost, setPowerCost] = useState(0.065); // CAD per kWh
+          const [datacapMultiplier, setDatacapMultiplier] = useState(10);
+
+          // Hardware assumptions
+          const storagePerServer = 0.5; // PiB per server
+          const serversNeeded = Math.ceil(storageCapacity / storagePerServer);
+          const costPerServer = 45000; // CAD
+          const totalHardwareCost = serversNeeded * costPerServer;
+
+          // Financing assumptions
+          const downPayment = 0.20;
+          const loanTerm = 36; // months
+          const interestRate = 0.07; // 7% annual
+          const monthlyRate = interestRate / 12;
+          const loanAmount = totalHardwareCost * (1 - downPayment);
+          const monthlyPayment = loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, loanTerm)) / (Math.pow(1 + monthlyRate, loanTerm) - 1);
+
+          // Operational costs (monthly)
+          const powerPerServer = 2.5; // kW average
+          const totalPowerKw = powerPerServer * serversNeeded;
+          const monthlyPowerCost = totalPowerKw * 24 * 30 * powerCost;
+
+          const spacePerServer = 4; // U per server
+          const rackSpaceNeeded = Math.ceil(serversNeeded * spacePerServer / 42);
+          const costPerRackSpace = 350; // CAD per month for colocation
+          const monthlySpaceCost = rackSpaceNeeded * costPerRackSpace;
+
+          const monthlyBandwidth = 500; // CAD for 10Gbps unmetered
+          const monthlyMaintenance = serversNeeded * 100; // CAD per server
+          const monthlyInsurance = 400;
+          const monthlySalary = 6500; // 1 FTE operator/admin
+
+          const totalMonthlyOpex = monthlyPowerCost + monthlySpaceCost + monthlyBandwidth +
+                                   monthlyMaintenance + monthlyInsurance + monthlySalary;
+
+          // Revenue assumptions (with Datacap)
+          const baseBlockReward = 0.15; // FIL per TiB per day (base)
+          const datacapBonus = baseBlockReward * datacapMultiplier;
+          const totalRewardRate = baseBlockReward + datacapBonus;
+          const filPrice = 5.5; // USD
+          const usdToCad = 1.38;
+          const filPriceCad = filPrice * usdToCad;
+
+          const dailyRevenue = storageCapacity * 1024 * totalRewardRate * filPriceCad;
+          const monthlyRevenue = dailyRevenue * 30;
+
+          // Calculate projections
+          const months = 48;
+          const projections = [];
+          let cumulativeCashFlow = -(totalHardwareCost * downPayment);
+          let breakEvenMonth = null;
+
+          for (let month = 1; month <= months; month++) {
+            const isFinancing = month <= loanTerm;
+            const monthlyCapex = isFinancing ? monthlyPayment : 0;
+            const totalMonthlyCost = totalMonthlyOpex + monthlyCapex;
+            const monthlyProfit = monthlyRevenue - totalMonthlyCost;
+            cumulativeCashFlow += monthlyProfit;
+
+            if (breakEvenMonth === null && cumulativeCashFlow > 0) {
+              breakEvenMonth = month;
+            }
+
+            projections.push({
+              month,
+              revenue: Math.round(monthlyRevenue),
+              opex: Math.round(totalMonthlyOpex),
+              capex: Math.round(monthlyCapex),
+              profit: Math.round(monthlyProfit),
+              cumulative: Math.round(cumulativeCashFlow)
+            });
+          }
+
+          const yearlyProfit = projections[11].profit * 12;
+          const roi = (yearlyProfit / totalHardwareCost) * 100;
+
+          return (
+            <div className="w-full max-w-6xl mx-auto p-6 bg-white">
+              <h1 className="text-3xl font-bold mb-6 text-blue-900">Filecoin Storage Provider Business Plan</h1>
+              <p className="text-lg mb-6 text-gray-700">Quebec, Canada - Strategic Analysis & Financial Projections</p>
+
+              {/* Input Controls */}
+              <div className="bg-blue-50 p-6 rounded-lg mb-6">
+                <h2 className="text-xl font-bold mb-4">Configuration</h2>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Storage Capacity (PiB)</label>
+                    <input
+                      type="number"
+                      value={storageCapacity}
+                      onChange={(e) => setStorageCapacity(Number(e.target.value))}
+                      className="w-full p-2 border rounded"
+                      min="1"
+                      max="100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Power Cost (CAD/kWh)</label>
+                    <input
+                      type="number"
+                      value={powerCost}
+                      onChange={(e) => setPowerCost(Number(e.target.value))}
+                      className="w-full p-2 border rounded"
+                      step="0.001"
+                      min="0.03"
+                      max="0.15"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Datacap Multiplier</label>
+                    <input
+                      type="number"
+                      value={datacapMultiplier}
+                      onChange={(e) => setDatacapMultiplier(Number(e.target.value))}
+                      className="w-full p-2 border rounded"
+                      min="1"
+                      max="100"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Executive Summary */}
+              <div className="mb-8">
+                <h2 className="text-2xl font-bold mb-4 text-blue-900">Executive Summary</h2>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <div className="text-sm text-gray-600">Initial Investment</div>
+                    <div className="text-2xl font-bold text-green-700">
+                      ${Math.round(totalHardwareCost * downPayment).toLocaleString()} CAD
+                    </div>
+                    <div className="text-xs text-gray-500">20% down payment</div>
+                  </div>
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <div className="text-sm text-gray-600">Monthly Revenue (Steady State)</div>
+                    <div className="text-2xl font-bold text-blue-700">
+                      ${Math.round(monthlyRevenue).toLocaleString()} CAD
+                    </div>
+                    <div className="text-xs text-gray-500">With Datacap {datacapMultiplier}x multiplier</div>
+                  </div>
+                  <div className="bg-orange-50 p-4 rounded-lg">
+                    <div className="text-sm text-gray-600">Break-Even Point</div>
+                    <div className="text-2xl font-bold text-orange-700">
+                      {breakEvenMonth ? `${breakEvenMonth} months` : 'N/A'}
+                    </div>
+                    <div className="text-xs text-gray-500">Cumulative cash flow positive</div>
+                  </div>
+                  <div className="bg-purple-50 p-4 rounded-lg">
+                    <div className="text-sm text-gray-600">Annual ROI (Year 1)</div>
+                    <div className="text-2xl font-bold text-purple-700">
+                      {roi.toFixed(1)}%
+                    </div>
+                    <div className="text-xs text-gray-500">Based on hardware investment</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Capital Expenditure Breakdown */}
+              <div className="mb-8">
+                <h2 className="text-2xl font-bold mb-4 text-blue-900">Capital Expenditure</h2>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2">Item</th>
+                        <th className="text-right py-2">Quantity</th>
+                        <th className="text-right py-2">Unit Cost (CAD)</th>
+                        <th className="text-right py-2">Total (CAD)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b">
+                        <td className="py-2">Storage Servers (AMD EPYC, 500TB each)</td>
+                        <td className="text-right">{serversNeeded}</td>
+                        <td className="text-right">${costPerServer.toLocaleString()}</td>
+                        <td className="text-right font-bold">${totalHardwareCost.toLocaleString()}</td>
+                      </tr>
+                      <tr className="border-b">
+                        <td className="py-2">Down Payment (20%)</td>
+                        <td className="text-right">-</td>
+                        <td className="text-right">-</td>
+                        <td className="text-right font-bold text-red-600">
+                          $({Math.round(totalHardwareCost * downPayment).toLocaleString()})
+                        </td>
+                      </tr>
+                      <tr className="border-b">
+                        <td className="py-2">Financed Amount</td>
+                        <td className="text-right">36 months</td>
+                        <td className="text-right">7% APR</td>
+                        <td className="text-right font-bold">${Math.round(loanAmount).toLocaleString()}</td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 font-bold">Monthly Loan Payment</td>
+                        <td className="text-right">-</td>
+                        <td className="text-right">-</td>
+                        <td className="text-right font-bold text-blue-700">
+                          ${Math.round(monthlyPayment).toLocaleString()}/mo
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Operating Expenses */}
+              <div className="mb-8">
+                <h2 className="text-2xl font-bold mb-4 text-blue-900">Monthly Operating Expenses</h2>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2">Expense Category</th>
+                        <th className="text-right py-2">Details</th>
+                        <th className="text-right py-2">Monthly Cost (CAD)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b">
+                        <td className="py-2">Electricity</td>
+                        <td className="text-right">{totalPowerKw.toFixed(1)} kW × ${powerCost}/kWh</td>
+                        <td className="text-right">${Math.round(monthlyPowerCost).toLocaleString()}</td>
+                      </tr>
+                      <tr className="border-b">
+                        <td className="py-2">Datacenter Space</td>
+                        <td className="text-right">{rackSpaceNeeded} racks × $350/rack</td>
+                        <td className="text-right">${Math.round(monthlySpaceCost).toLocaleString()}</td>
+                      </tr>
+                      <tr className="border-b">
+                        <td className="py-2">Bandwidth</td>
+                        <td className="text-right">10Gbps unmetered</td>
+                        <td className="text-right">${monthlyBandwidth.toLocaleString()}</td>
+                      </tr>
+                      <tr className="border-b">
+                        <td className="py-2">Maintenance & Spares</td>
+                        <td className="text-right">{serversNeeded} servers × $100</td>
+                        <td className="text-right">${Math.round(monthlyMaintenance).toLocaleString()}</td>
+                      </tr>
+                      <tr className="border-b">
+                        <td className="py-2">Insurance</td>
+                        <td className="text-right">Equipment & liability</td>
+                        <td className="text-right">${monthlyInsurance.toLocaleString()}</td>
+                      </tr>
+                      <tr className="border-b">
+                        <td className="py-2">Personnel</td>
+                        <td className="text-right">1 FTE operator/admin</td>
+                        <td className="text-right">${monthlySalary.toLocaleString()}</td>
+                      </tr>
+                      <tr className="font-bold">
+                        <td className="py-2">Total Monthly OPEX</td>
+                        <td className="text-right">-</td>
+                        <td className="text-right text-red-600">${Math.round(totalMonthlyOpex).toLocaleString()}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Revenue Model */}
+              <div className="mb-8">
+                <h2 className="text-2xl font-bold mb-4 text-blue-900">Revenue Model (with Datacap)</h2>
+                <div className="bg-green-50 p-4 rounded-lg mb-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-sm text-gray-600">Base Block Rewards</div>
+                      <div className="text-lg">{baseBlockReward} FIL/TiB/day</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-gray-600">Datacap Bonus ({datacapMultiplier}x)</div>
+                      <div className="text-lg">{datacapBonus.toFixed(2)} FIL/TiB/day</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-gray-600">Total Rewards Rate</div>
+                      <div className="text-lg font-bold">{totalRewardRate.toFixed(2)} FIL/TiB/day</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-gray-600">FIL Price</div>
+                      <div className="text-lg">${filPrice} USD (${filPriceCad.toFixed(2)} CAD)</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="text-sm text-gray-600 mb-2">Monthly Revenue Calculation</div>
+                  <div className="text-lg">
+                    {storageCapacity} PiB × 1,024 TiB/PiB × {totalRewardRate.toFixed(2)} FIL/TiB/day × 30 days × ${filPriceCad.toFixed(2)} CAD/FIL
+                  </div>
+                  <div className="text-2xl font-bold text-green-700 mt-2">
+                    = ${Math.round(monthlyRevenue).toLocaleString()} CAD/month
+                  </div>
+                </div>
+              </div>
+
+              {/* Cash Flow Chart */}
+              <div className="mb-8">
+                <h2 className="text-2xl font-bold mb-4 text-blue-900">48-Month Cash Flow Projection</h2>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={projections}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="month" label={{ value: 'Month', position: 'insideBottom', offset: -5 }} />
+                    <YAxis label={{ value: 'CAD', angle: -90, position: 'insideLeft' }} />
+                    <Tooltip formatter={(value) => `$${value.toLocaleString()}`} />
+                    <Legend />
+                    <Line type="monotone" dataKey="cumulative" stroke="#10b981" name="Cumulative Cash Flow" strokeWidth={2} />
+                    <Line type="monotone" dataKey="profit" stroke="#3b82f6" name="Monthly Profit" strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Monthly P&L Chart */}
+              <div className="mb-8">
+                <h2 className="text-2xl font-bold mb-4 text-blue-900">Monthly Profit & Loss Breakdown</h2>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={projections.slice(0, 24)}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="month" />
+                    <YAxis />
+                    <Tooltip formatter={(value) => `$${value.toLocaleString()}`} />
+                    <Legend />
+                    <Bar dataKey="revenue" fill="#10b981" name="Revenue" />
+                    <Bar dataKey="opex" fill="#ef4444" name="Operating Expenses" />
+                    <Bar dataKey="capex" fill="#f59e0b" name="Loan Payment" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Quebec Advantages */}
+              <div className="mb-8">
+                <h2 className="text-2xl font-bold mb-4 text-blue-900">Quebec Competitive Advantages</h2>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <h3 className="font-bold mb-2 text-blue-900">⚡ Electricity Cost</h3>
+                    <ul className="text-sm space-y-1">
+                      <li>• Quebec: $0.055-0.075/kWh (Hydro-Québec)</li>
+                      <li>• US Average: $0.12-0.15/kWh</li>
+                      <li>• <span className="font-bold text-green-700">40-60% savings on power</span></li>
+                      <li>• 100% renewable hydroelectric</li>
+                    </ul>
+                  </div>
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <h3 className="font-bold mb-2 text-green-900">🏢 Regulatory Environment</h3>
+                    <ul className="text-sm space-y-1">
+                      <li>• Crypto-friendly province</li>
+                      <li>• Clear tax treatment (business income)</li>
+                      <li>• No state-level restrictions</li>
+                      <li>• Mature datacenter ecosystem</li>
+                    </ul>
+                  </div>
+                  <div className="bg-purple-50 p-4 rounded-lg">
+                    <h3 className="font-bold mb-2 text-purple-900">❄️ Climate Benefits</h3>
+                    <ul className="text-sm space-y-1">
+                      <li>• Cold climate = free cooling 6+ months/year</li>
+                      <li>• Reduced HVAC costs (15-25% savings)</li>
+                      <li>• Lower equipment failure rates</li>
+                      <li>• Extended hardware lifespan</li>
+                    </ul>
+                  </div>
+                  <div className="bg-orange-50 p-4 rounded-lg">
+                    <h3 className="font-bold mb-2 text-orange-900">💰 Financial Incentives</h3>
+                    <ul className="text-sm space-y-1">
+                      <li>• Investissement Québec programs</li>
+                      <li>• R&D tax credits (30-37.5%)</li>
+                      <li>• Lower corporate tax vs US (26.5%)</li>
+                      <li>• Accelerated CCA on hardware</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {/* Risk Analysis */}
+              <div className="mb-8">
+                <h2 className="text-2xl font-bold mb-4 text-blue-900">Risk Analysis & Mitigation</h2>
+                <div className="space-y-3">
+                  <div className="bg-red-50 p-4 rounded-lg">
+                    <h3 className="font-bold text-red-900 mb-2">⚠️ FIL Price Volatility</h3>
+                    <p className="text-sm mb-2"><strong>Risk:</strong> FIL price fluctuations directly impact revenue</p>
+                    <p className="text-sm"><strong>Mitigation:</strong> Hedge with futures, maintain 6-month operating reserve, diversify into other networks (Storj, Arweave)</p>
+                  </div>
+                  <div className="bg-yellow-50 p-4 rounded-lg">
+                    <h3 className="font-bold text-yellow-900 mb-2">⚠️ Datacap Allocation Dependency</h3>
+                    <p className="text-sm mb-2"><strong>Risk:</strong> Heavy reliance on Datacap multiplier for profitability</p>
+                    <p className="text-sm"><strong>Mitigation:</strong> Build relationships with notaries, diversify client base, maintain high quality score (>95%)</p>
+                  </div>
+                  <div className="bg-orange-50 p-4 rounded-lg">
+                    <h3 className="font-bold text-orange-900 mb-2">⚠️ Hardware Obsolescence</h3>
+                    <p className="text-sm mb-2"><strong>Risk:</strong> Technology advances, reducing competitive position</p>
+                    <p className="text-sm"><strong>Mitigation:</strong> 3-year refresh cycle, modular architecture, stay current with Filecoin improvements</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Implementation Timeline */}
+              <div className="mb-8">
+                <h2 className="text-2xl font-bold mb-4 text-blue-900">Implementation Timeline</h2>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-4 bg-gray-50 p-3 rounded">
+                    <div className="w-24 font-bold text-sm">Month 0-1</div>
+                    <div className="text-sm">Company incorporation, datacenter selection, financing secured</div>
+                  </div>
+                  <div className="flex items-center gap-4 bg-gray-50 p-3 rounded">
+                    <div className="w-24 font-bold text-sm">Month 1-2</div>
+                    <div className="text-sm">Hardware procurement, space preparation, network provisioning</div>
+                  </div>
+                  <div className="flex items-center gap-4 bg-gray-50 p-3 rounded">
+                    <div className="w-24 font-bold text-sm">Month 2-3</div>
+                    <div className="text-sm">Installation, Filecoin node setup, initial sealing operations</div>
+                  </div>
+                  <div className="flex items-center gap-4 bg-blue-50 p-3 rounded">
+                    <div className="w-24 font-bold text-sm">Month 3+</div>
+                    <div className="text-sm font-bold">Full operational capacity, Datacap applications, revenue generation</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Key Assumptions */}
+              <div className="bg-gray-100 p-6 rounded-lg">
+                <h2 className="text-xl font-bold mb-3">Key Assumptions</h2>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <ul className="space-y-1">
+                      <li>• FIL price: $5.50 USD stable</li>
+                      <li>• USD/CAD: 1.38 exchange rate</li>
+                      <li>• Datacap multiplier: {datacapMultiplier}x maintained</li>
+                      <li>• 95% uptime/quality score</li>
+                      <li>• Hardware lifespan: 4-5 years</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <ul className="space-y-1">
+                      <li>• Quebec power: ${powerCost}/kWh</li>
+                      <li>• No regulatory changes</li>
+                      <li>• Steady state reached month 3</li>
+                      <li>• No slashing penalties</li>
+                      <li>• 7% financing rate</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<FilecoinBusinessPlan />);
+    </script>
+</body>
+</html>
