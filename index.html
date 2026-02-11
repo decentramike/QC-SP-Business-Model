@@ -17,17 +17,59 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 
     <script>
-        const { useState, createElement: h } = React;
+        const { useState, useEffect, createElement: h } = React;
 
         function FilecoinBusinessPlan() {
           const [storageCapacity, setStorageCapacity] = useState(10);
           const [powerCost, setPowerCost] = useState(0.065);
           const [datacapMultiplier, setDatacapMultiplier] = useState(10);
+          const [hardwareType, setHardwareType] = useState('premium');
+          const [filPrice, setFilPrice] = useState(5.5);
+          const [filPriceLoading, setFilPriceLoading] = useState(true);
+          const [lastUpdated, setLastUpdated] = useState('');
+
+          // Fetch real-time FIL price
+          useEffect(() => {
+            fetch('https://api.coingecko.com/api/v3/simple/price?ids=filecoin&vs_currencies=usd')
+              .then(res => res.json())
+              .then(data => {
+                if (data.filecoin && data.filecoin.usd) {
+                  setFilPrice(data.filecoin.usd);
+                  setLastUpdated(new Date().toLocaleString());
+                }
+                setFilPriceLoading(false);
+              })
+              .catch(err => {
+                console.error('Failed to fetch FIL price:', err);
+                setFilPriceLoading(false);
+              });
+          }, []);
+
+          // Hardware configurations
+          const hardwareConfigs = {
+            premium: {
+              name: 'Premium Hardware (New AMD EPYC)',
+              storagePerServer: 0.5, // PiB
+              costPerServer: 45000, // CAD
+              powerPerServer: 2.5, // kW
+              spacePerServer: 4, // U
+              description: 'Latest AMD EPYC 7003, enterprise NVMe, optimal efficiency'
+            },
+            overclocked: {
+              name: 'Budget Hardware (Overclocked Previous Gen)',
+              storagePerServer: 0.4, // PiB - less efficient storage
+              costPerServer: 28000, // CAD - cheaper
+              powerPerServer: 3.2, // kW - higher power draw
+              spacePerServer: 4, // U
+              description: 'Overclocked AMD EPYC 7002, consumer drives, higher power consumption'
+            }
+          };
+
+          const hardware = hardwareConfigs[hardwareType];
 
           // Hardware assumptions
-          const storagePerServer = 0.5;
-          const serversNeeded = Math.ceil(storageCapacity / storagePerServer);
-          const costPerServer = 45000;
+          const serversNeeded = Math.ceil(storageCapacity / hardware.storagePerServer);
+          const costPerServer = hardware.costPerServer;
           const totalHardwareCost = serversNeeded * costPerServer;
 
           // Financing assumptions
@@ -39,17 +81,17 @@
           const monthlyPayment = loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, loanTerm)) / (Math.pow(1 + monthlyRate, loanTerm) - 1);
 
           // Operational costs
-          const powerPerServer = 2.5;
+          const powerPerServer = hardware.powerPerServer;
           const totalPowerKw = powerPerServer * serversNeeded;
           const monthlyPowerCost = totalPowerKw * 24 * 30 * powerCost;
 
-          const spacePerServer = 4;
+          const spacePerServer = hardware.spacePerServer;
           const rackSpaceNeeded = Math.ceil(serversNeeded * spacePerServer / 42);
           const costPerRackSpace = 350;
           const monthlySpaceCost = rackSpaceNeeded * costPerRackSpace;
 
           const monthlyBandwidth = 500;
-          const monthlyMaintenance = serversNeeded * 100;
+          const monthlyMaintenance = serversNeeded * (hardwareType === 'overclocked' ? 150 : 100); // Higher maintenance for overclocked
           const monthlyInsurance = 400;
           const monthlySalary = 6500;
 
@@ -60,7 +102,6 @@
           const baseBlockReward = 0.15;
           const datacapBonus = baseBlockReward * datacapMultiplier;
           const totalRewardRate = baseBlockReward + datacapBonus;
-          const filPrice = 5.5;
           const usdToCad = 1.38;
           const filPriceCad = filPrice * usdToCad;
 
@@ -91,10 +132,41 @@
             h('h1', { className: 'text-3xl font-bold mb-6 text-blue-900' }, 'Filecoin Storage Provider Business Plan'),
             h('p', { className: 'text-lg mb-6 text-gray-700' }, 'Quebec, Canada - Strategic Analysis & Financial Projections'),
 
+            // Real-time FIL Price Banner
+            h('div', { className: 'bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4 rounded-lg mb-6' },
+              h('div', { className: 'flex justify-between items-center' },
+                h('div', {},
+                  h('div', { className: 'text-sm opacity-90' }, '🔴 LIVE FIL Price'),
+                  h('div', { className: 'text-3xl font-bold' },
+                    filPriceLoading ? 'Loading...' : '$' + filPrice.toFixed(2) + ' USD'
+                  ),
+                  h('div', { className: 'text-sm opacity-75' },
+                    lastUpdated ? 'Updated: ' + lastUpdated : 'Fetching from CoinGecko...'
+                  )
+                ),
+                h('div', { className: 'text-right' },
+                  h('div', { className: 'text-sm opacity-90' }, 'CAD Equivalent'),
+                  h('div', { className: 'text-2xl font-bold' }, '$' + filPriceCad.toFixed(2) + ' CAD'),
+                  h('div', { className: 'text-sm opacity-75' }, '(1.38 USD/CAD)')
+                )
+              )
+            ),
+
             // Configuration
             h('div', { className: 'bg-blue-50 p-6 rounded-lg mb-6' },
               h('h2', { className: 'text-xl font-bold mb-4' }, 'Configuration'),
-              h('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-4' },
+              h('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4' },
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Hardware Type'),
+                  h('select', {
+                    value: hardwareType,
+                    onChange: (e) => setHardwareType(e.target.value),
+                    className: 'w-full p-2 border rounded bg-white'
+                  },
+                    h('option', { value: 'premium' }, 'Premium (New)'),
+                    h('option', { value: 'overclocked' }, 'Budget (Overclocked)')
+                  )
+                ),
                 h('div', {},
                   h('label', { className: 'block text-sm font-medium mb-2' }, 'Storage Capacity (PiB)'),
                   h('input', {
@@ -128,6 +200,17 @@
                     min: 1,
                     max: 100
                   })
+                )
+              ),
+              // Hardware description
+              h('div', { className: 'mt-4 p-3 bg-white rounded border border-blue-200' },
+                h('div', { className: 'font-bold text-sm text-blue-900' }, hardware.name),
+                h('div', { className: 'text-sm text-gray-600 mt-1' }, hardware.description),
+                h('div', { className: 'grid grid-cols-2 md:grid-cols-4 gap-2 mt-2 text-xs' },
+                  h('div', {}, '💾 ' + hardware.storagePerServer + ' PiB/server'),
+                  h('div', {}, '💰 $' + hardware.costPerServer.toLocaleString() + '/server'),
+                  h('div', {}, '⚡ ' + hardware.powerPerServer + ' kW/server'),
+                  h('div', {}, '📦 ' + serversNeeded + ' servers needed')
                 )
               )
             ),
@@ -167,6 +250,69 @@
               )
             ),
 
+            // Hardware Comparison
+            h('div', { className: 'mb-8' },
+              h('h2', { className: 'text-2xl font-bold mb-4 text-blue-900' }, 'Hardware Scenario Comparison'),
+              h('div', { className: 'bg-gray-50 p-4 rounded-lg overflow-x-auto' },
+                h('table', { className: 'w-full text-sm' },
+                  h('thead', {},
+                    h('tr', { className: 'border-b' },
+                      h('th', { className: 'text-left py-2' }, 'Metric'),
+                      h('th', { className: 'text-right py-2 bg-green-50' }, 'Premium Hardware'),
+                      h('th', { className: 'text-right py-2 bg-blue-50' }, 'Budget (Overclocked)'),
+                      h('th', { className: 'text-right py-2' }, 'Current Selection')
+                    )
+                  ),
+                  h('tbody', {},
+                    h('tr', { className: 'border-b' },
+                      h('td', { className: 'py-2' }, 'Storage per Server'),
+                      h('td', { className: 'text-right bg-green-50' }, hardwareConfigs.premium.storagePerServer + ' PiB'),
+                      h('td', { className: 'text-right bg-blue-50' }, hardwareConfigs.overclocked.storagePerServer + ' PiB'),
+                      h('td', { className: 'text-right font-bold' }, hardware.storagePerServer + ' PiB')
+                    ),
+                    h('tr', { className: 'border-b' },
+                      h('td', { className: 'py-2' }, 'Cost per Server'),
+                      h('td', { className: 'text-right bg-green-50' }, '$' + hardwareConfigs.premium.costPerServer.toLocaleString()),
+                      h('td', { className: 'text-right bg-blue-50' }, '$' + hardwareConfigs.overclocked.costPerServer.toLocaleString()),
+                      h('td', { className: 'text-right font-bold' }, '$' + hardware.costPerServer.toLocaleString())
+                    ),
+                    h('tr', { className: 'border-b' },
+                      h('td', { className: 'py-2' }, 'Power per Server'),
+                      h('td', { className: 'text-right bg-green-50' }, hardwareConfigs.premium.powerPerServer + ' kW'),
+                      h('td', { className: 'text-right bg-blue-50' }, hardwareConfigs.overclocked.powerPerServer + ' kW'),
+                      h('td', { className: 'text-right font-bold' }, hardware.powerPerServer + ' kW')
+                    ),
+                    h('tr', { className: 'border-b' },
+                      h('td', { className: 'py-2' }, 'Servers Needed (' + storageCapacity + ' PiB)'),
+                      h('td', { className: 'text-right bg-green-50' }, Math.ceil(storageCapacity / hardwareConfigs.premium.storagePerServer)),
+                      h('td', { className: 'text-right bg-blue-50' }, Math.ceil(storageCapacity / hardwareConfigs.overclocked.storagePerServer)),
+                      h('td', { className: 'text-right font-bold' }, serversNeeded)
+                    ),
+                    h('tr', { className: 'border-b' },
+                      h('td', { className: 'py-2 font-bold' }, 'Total Hardware Cost'),
+                      h('td', { className: 'text-right font-bold bg-green-50' },
+                        '$' + (Math.ceil(storageCapacity / hardwareConfigs.premium.storagePerServer) * hardwareConfigs.premium.costPerServer).toLocaleString()
+                      ),
+                      h('td', { className: 'text-right font-bold bg-blue-50' },
+                        '$' + (Math.ceil(storageCapacity / hardwareConfigs.overclocked.storagePerServer) * hardwareConfigs.overclocked.costPerServer).toLocaleString()
+                      ),
+                      h('td', { className: 'text-right font-bold text-blue-700' }, '$' + totalHardwareCost.toLocaleString())
+                    ),
+                    h('tr', {},
+                      h('td', { className: 'py-2 font-bold' }, 'Monthly Power Cost'),
+                      h('td', { className: 'text-right font-bold bg-green-50' },
+                        '$' + Math.round(Math.ceil(storageCapacity / hardwareConfigs.premium.storagePerServer) * hardwareConfigs.premium.powerPerServer * 24 * 30 * powerCost).toLocaleString()
+                      ),
+                      h('td', { className: 'text-right font-bold bg-blue-50' },
+                        '$' + Math.round(Math.ceil(storageCapacity / hardwareConfigs.overclocked.storagePerServer) * hardwareConfigs.overclocked.powerPerServer * 24 * 30 * powerCost).toLocaleString()
+                      ),
+                      h('td', { className: 'text-right font-bold text-red-700' }, '$' + Math.round(monthlyPowerCost).toLocaleString())
+                    )
+                  )
+                )
+              )
+            ),
+
             // Capital Expenditure
             h('div', { className: 'mb-8' },
               h('h2', { className: 'text-2xl font-bold mb-4 text-blue-900' }, 'Capital Expenditure'),
@@ -182,7 +328,7 @@
                   ),
                   h('tbody', {},
                     h('tr', { className: 'border-b' },
-                      h('td', { className: 'py-2' }, 'Storage Servers (AMD EPYC, 500TB each)'),
+                      h('td', { className: 'py-2' }, hardware.name),
                       h('td', { className: 'text-right' }, serversNeeded),
                       h('td', { className: 'text-right' }, '$' + costPerServer.toLocaleString()),
                       h('td', { className: 'text-right font-bold' }, '$' + totalHardwareCost.toLocaleString())
@@ -244,7 +390,7 @@
                     ),
                     h('tr', { className: 'border-b' },
                       h('td', { className: 'py-2' }, 'Maintenance & Spares'),
-                      h('td', { className: 'text-right' }, serversNeeded + ' servers × $100'),
+                      h('td', { className: 'text-right' }, serversNeeded + ' servers × $' + (hardwareType === 'overclocked' ? '150' : '100')),
                       h('td', { className: 'text-right' }, '$' + Math.round(monthlyMaintenance).toLocaleString())
                     ),
                     h('tr', { className: 'border-b' },
@@ -285,8 +431,8 @@
                     h('div', { className: 'text-lg font-bold' }, totalRewardRate.toFixed(2) + ' FIL/TiB/day')
                   ),
                   h('div', {},
-                    h('div', { className: 'text-gray-600' }, 'FIL Price'),
-                    h('div', { className: 'text-lg' }, '$' + filPrice + ' USD ($' + filPriceCad.toFixed(2) + ' CAD)')
+                    h('div', { className: 'text-gray-600' }, 'Live FIL Price'),
+                    h('div', { className: 'text-lg font-bold text-green-700' }, '$' + filPrice.toFixed(2) + ' USD ($' + filPriceCad.toFixed(2) + ' CAD)')
                   )
                 )
               ),
@@ -338,11 +484,11 @@
               h('h2', { className: 'text-xl font-bold mb-3' }, 'Key Assumptions'),
               h('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-4 text-sm' },
                 h('ul', { className: 'space-y-1' },
-                  h('li', {}, '• FIL price: $5.50 USD stable'),
+                  h('li', {}, '• FIL price: $' + filPrice.toFixed(2) + ' USD (LIVE from CoinGecko)'),
                   h('li', {}, '• USD/CAD: 1.38 exchange rate'),
                   h('li', {}, '• Datacap multiplier: ' + datacapMultiplier + 'x maintained'),
                   h('li', {}, '• 95% uptime/quality score'),
-                  h('li', {}, '• Hardware lifespan: 4-5 years')
+                  h('li', {}, '• Hardware: ' + hardware.name)
                 ),
                 h('ul', { className: 'space-y-1' },
                   h('li', {}, '• Quebec power: $' + powerCost + '/kWh'),
