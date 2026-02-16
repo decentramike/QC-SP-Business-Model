@@ -99,7 +99,8 @@
                                    monthlyMaintenance + monthlyInsurance + monthlySalary;
 
           // Revenue assumptions
-          const baseBlockReward = 0.15;
+          // Source: https://filfox.info/en (24h average mining reward as of Feb 2026)
+          const baseBlockReward = 0.0035;
           const datacapBonus = baseBlockReward * datacapMultiplier;
           const totalRewardRate = baseBlockReward + datacapBonus;
           const usdToCad = 1.38;
