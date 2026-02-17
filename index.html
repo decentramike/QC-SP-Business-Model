@@ -24,6 +24,10 @@
           const [powerCost, setPowerCost] = useState(0.065);
           const [datacapMultiplier, setDatacapMultiplier] = useState(10);
           const [hardwareType, setHardwareType] = useState('premium');
+          const [blockReward, setBlockReward] = useState(0.0035);
+          const [pledgePerSector, setPledgePerSector] = useState(0.07);
+          const [dailyGasCost, setDailyGasCost] = useState(5);
+          const [sectorDuration, setSectorDuration] = useState(12);
           const [filPrice, setFilPrice] = useState(5.5);
           const [filPriceLoading, setFilPriceLoading] = useState(true);
           const [lastUpdated, setLastUpdated] = useState('');
@@ -67,6 +71,23 @@
 
           const hardware = hardwareConfigs[hardwareType];
 
+          // FIL price in CAD (needed for pledge and gas calculations)
+          const usdToCad = 1.38;
+          const filPriceCad = filPrice * usdToCad;
+
+          // Pledge collateral calculation
+          // Source: https://docs.filecoin.io/storage-providers/filecoin-economics/fil-collateral
+          // Initial pledge = storage pledge + consensus pledge, locked per sector
+          const sectorsPerTiB = 32; // 1 TiB = 32 sectors of 32 GiB
+          const totalSectors = storageCapacity * 1024 * sectorsPerTiB;
+          const totalPledgeFil = totalSectors * pledgePerSector;
+          const totalPledgeCad = totalPledgeFil * filPriceCad;
+
+          // Gas costs (monthly, in CAD)
+          // Source: https://docs.filecoin.io/storage-providers/filecoin-economics/block-rewards
+          // Covers WindowPoSt, sector commits, and other on-chain messages
+          const monthlyGasCost = dailyGasCost * 30 * filPriceCad;
+
           // Hardware assumptions
           const serversNeeded = Math.ceil(storageCapacity / hardware.storagePerServer);
           const costPerServer = hardware.costPerServer;
@@ -96,22 +117,20 @@
           const monthlySalary = 6500;
 
           const totalMonthlyOpex = monthlyPowerCost + monthlySpaceCost + monthlyBandwidth +
-                                   monthlyMaintenance + monthlyInsurance + monthlySalary;
+                                   monthlyMaintenance + monthlyInsurance + monthlySalary + monthlyGasCost;
 
           // Revenue assumptions
           // Source: https://filfox.info/en (24h average mining reward as of Feb 2026)
-          const baseBlockReward = 0.0035;
+          const baseBlockReward = blockReward;
           const datacapBonus = baseBlockReward * datacapMultiplier;
           const totalRewardRate = baseBlockReward + datacapBonus;
-          const usdToCad = 1.38;
-          const filPriceCad = filPrice * usdToCad;
 
           const dailyRevenue = storageCapacity * 1024 * totalRewardRate * filPriceCad;
           const monthlyRevenue = dailyRevenue * 30;
 
           // Calculate projections
           const months = 48;
-          let cumulativeCashFlow = -(totalHardwareCost * downPayment);
+          let cumulativeCashFlow = -(totalHardwareCost * downPayment) - totalPledgeCad;
           let breakEvenMonth = null;
 
           for (let month = 1; month <= months; month++) {
@@ -156,6 +175,7 @@
             // Configuration
             h('div', { className: 'bg-blue-50 p-6 rounded-lg mb-6' },
               h('h2', { className: 'text-xl font-bold mb-4' }, 'Configuration'),
+              h('h3', { className: 'text-sm font-semibold text-blue-800 mb-2' }, 'Infrastructure'),
               h('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4' },
                 h('div', {},
                   h('label', { className: 'block text-sm font-medium mb-2' }, 'Hardware Type'),
@@ -203,6 +223,62 @@
                   })
                 )
               ),
+              // Filecoin Network Parameters
+              h('h3', { className: 'text-sm font-semibold text-blue-800 mb-2 mt-4' }, 'Filecoin Network Parameters'),
+              h('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4' },
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Block Reward (FIL/TiB/day)'),
+                  h('input', {
+                    type: 'number',
+                    value: blockReward,
+                    onChange: (e) => setBlockReward(Number(e.target.value)),
+                    className: 'w-full p-2 border rounded',
+                    step: 0.0001,
+                    min: 0,
+                    max: 1
+                  }),
+                  h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Source: filfox.info 24h avg')
+                ),
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Pledge per Sector (FIL/32GiB)'),
+                  h('input', {
+                    type: 'number',
+                    value: pledgePerSector,
+                    onChange: (e) => setPledgePerSector(Number(e.target.value)),
+                    className: 'w-full p-2 border rounded',
+                    step: 0.01,
+                    min: 0,
+                    max: 5
+                  }),
+                  h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Initial pledge collateral locked')
+                ),
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Gas Cost (FIL/day)'),
+                  h('input', {
+                    type: 'number',
+                    value: dailyGasCost,
+                    onChange: (e) => setDailyGasCost(Number(e.target.value)),
+                    className: 'w-full p-2 border rounded',
+                    step: 0.5,
+                    min: 0,
+                    max: 50
+                  }),
+                  h('div', { className: 'text-xs text-gray-500 mt-1' }, 'WindowPoSt + sector commits')
+                ),
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Sector Duration (months)'),
+                  h('input', {
+                    type: 'number',
+                    value: sectorDuration,
+                    onChange: (e) => setSectorDuration(Number(e.target.value)),
+                    className: 'w-full p-2 border rounded',
+                    step: 1,
+                    min: 6,
+                    max: 60
+                  }),
+                  h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Pledge lock-up period')
+                )
+              ),
               // Hardware description
               h('div', { className: 'mt-4 p-3 bg-white rounded border border-blue-200' },
                 h('div', { className: 'font-bold text-sm text-blue-900' }, hardware.name),
@@ -221,11 +297,13 @@
               h('h2', { className: 'text-2xl font-bold mb-4 text-blue-900' }, 'Executive Summary'),
               h('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-4' },
                 h('div', { className: 'bg-green-50 p-4 rounded-lg' },
-                  h('div', { className: 'text-sm text-gray-600' }, 'Initial Investment'),
+                  h('div', { className: 'text-sm text-gray-600' }, 'Initial Capital Required'),
                   h('div', { className: 'text-2xl font-bold text-green-700' },
-                    '$' + Math.round(totalHardwareCost * downPayment).toLocaleString() + ' CAD'
+                    '$' + Math.round(totalHardwareCost * downPayment + totalPledgeCad).toLocaleString() + ' CAD'
                   ),
-                  h('div', { className: 'text-xs text-gray-500' }, '20% down payment')
+                  h('div', { className: 'text-xs text-gray-500' },
+                    '20% down ($' + Math.round(totalHardwareCost * downPayment).toLocaleString() + ') + pledge ($' + Math.round(totalPledgeCad).toLocaleString() + ')'
+                  )
                 ),
                 h('div', { className: 'bg-blue-50 p-4 rounded-lg' },
                   h('div', { className: 'text-sm text-gray-600' }, 'Monthly Revenue (Steady State)'),
@@ -335,6 +413,14 @@
                       h('td', { className: 'text-right font-bold' }, '$' + totalHardwareCost.toLocaleString())
                     ),
                     h('tr', { className: 'border-b' },
+                      h('td', { className: 'py-2' }, 'Pledge Collateral (locked)'),
+                      h('td', { className: 'text-right' }, Math.round(totalPledgeFil).toLocaleString() + ' FIL'),
+                      h('td', { className: 'text-right' }, pledgePerSector + ' FIL/sector × ' + totalSectors.toLocaleString() + ' sectors'),
+                      h('td', { className: 'text-right font-bold text-orange-600' },
+                        '$' + Math.round(totalPledgeCad).toLocaleString()
+                      )
+                    ),
+                    h('tr', { className: 'border-b' },
                       h('td', { className: 'py-2' }, 'Down Payment (20%)'),
                       h('td', { className: 'text-right' }, '-'),
                       h('td', { className: 'text-right' }, '-'),
@@ -403,6 +489,11 @@
                       h('td', { className: 'py-2' }, 'Personnel'),
                       h('td', { className: 'text-right' }, '1 FTE operator/admin'),
                       h('td', { className: 'text-right' }, '$' + monthlySalary.toLocaleString())
+                    ),
+                    h('tr', { className: 'border-b' },
+                      h('td', { className: 'py-2' }, 'On-Chain Gas Fees'),
+                      h('td', { className: 'text-right' }, dailyGasCost + ' FIL/day × $' + filPriceCad.toFixed(2) + ' CAD'),
+                      h('td', { className: 'text-right' }, '$' + Math.round(monthlyGasCost).toLocaleString())
                     ),
                     h('tr', { className: 'font-bold' },
                       h('td', { className: 'py-2' }, 'Total Monthly OPEX'),
@@ -474,6 +565,7 @@
                   h('div', { className: 'font-bold mb-2' }, 'Investment Returns'),
                   h('div', {}, 'Total Investment: $' + totalHardwareCost.toLocaleString()),
                   h('div', {}, 'Down Payment: $' + Math.round(totalHardwareCost * downPayment).toLocaleString()),
+                  h('div', {}, 'Pledge Collateral: $' + Math.round(totalPledgeCad).toLocaleString() + ' (' + Math.round(totalPledgeFil).toLocaleString() + ' FIL)'),
                   h('div', {}, 'Break-even: ' + (breakEvenMonth || 'N/A') + ' months'),
                   h('div', { className: 'font-bold text-green-700 mt-2' }, 'ROI: ' + roi.toFixed(1) + '%')
                 )
@@ -483,20 +575,30 @@
             // Key Assumptions
             h('div', { className: 'bg-blue-50 p-6 rounded-lg' },
               h('h2', { className: 'text-xl font-bold mb-3' }, 'Key Assumptions'),
-              h('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-4 text-sm' },
+              h('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-4 text-sm' },
                 h('ul', { className: 'space-y-1' },
+                  h('li', { className: 'font-bold text-blue-800' }, 'Market & FX'),
                   h('li', {}, '• FIL price: $' + filPrice.toFixed(2) + ' USD (LIVE from CoinGecko)'),
                   h('li', {}, '• USD/CAD: 1.38 exchange rate'),
-                  h('li', {}, '• Datacap multiplier: ' + datacapMultiplier + 'x maintained'),
-                  h('li', {}, '• 95% uptime/quality score'),
-                  h('li', {}, '• Hardware: ' + hardware.name)
+                  h('li', {}, '• Hardware: ' + hardware.name),
+                  h('li', {}, '• Quebec power: $' + powerCost + '/kWh'),
+                  h('li', {}, '• 7% financing rate')
                 ),
                 h('ul', { className: 'space-y-1' },
-                  h('li', {}, '• Quebec power: $' + powerCost + '/kWh'),
-                  h('li', {}, '• No regulatory changes'),
+                  h('li', { className: 'font-bold text-blue-800' }, 'Filecoin Network'),
+                  h('li', {}, '• Block reward: ' + blockReward + ' FIL/TiB/day'),
+                  h('li', {}, '• Datacap multiplier: ' + datacapMultiplier + 'x'),
+                  h('li', {}, '• Pledge: ' + pledgePerSector + ' FIL/sector'),
+                  h('li', {}, '• Gas cost: ' + dailyGasCost + ' FIL/day'),
+                  h('li', {}, '• Sector duration: ' + sectorDuration + ' months')
+                ),
+                h('ul', { className: 'space-y-1' },
+                  h('li', { className: 'font-bold text-blue-800' }, 'Operational'),
+                  h('li', {}, '• 95% uptime/quality score'),
+                  h('li', {}, '• No slashing penalties assumed'),
                   h('li', {}, '• Steady state reached month 3'),
-                  h('li', {}, '• No slashing penalties'),
-                  h('li', {}, '• 7% financing rate')
+                  h('li', {}, '• No regulatory changes'),
+                  h('li', {}, '• 75% block reward vests over 180 days')
                 )
               )
             )
