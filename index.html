@@ -33,6 +33,7 @@
           const [interestRatePct, setInterestRatePct] = useState(7);
           const [loanTermMonths, setLoanTermMonths] = useState(36);
           const [projectionMonths, setProjectionMonths] = useState(60);
+          const [exitMonth, setExitMonth] = useState(36);
           const [exchangeRate, setExchangeRate] = useState(1.38);
           const [filPrice, setFilPrice] = useState(5.5);
           const [filPriceLoading, setFilPriceLoading] = useState(true);
@@ -65,7 +66,10 @@
               powerPerServer: 2.0,
               spacePerServer: 4,
               maintenancePerServer: 75,
-              description: 'AMD EPYC 9004 (Genoa), enterprise U.2 NVMe, ECC RAM, redundant PSU — maximum density & efficiency'
+              usefulLifeMonths: 60,
+              residualPct: 0.40,
+              description: 'AMD EPYC 9004 (Genoa), enterprise U.2 NVMe, ECC RAM, redundant PSU — maximum density & efficiency',
+              residualNote: 'High HPC/AI inference resale value'
             },
             premium: {
               name: 'Premium (Current Gen)',
@@ -75,7 +79,10 @@
               powerPerServer: 2.5,
               spacePerServer: 4,
               maintenancePerServer: 100,
-              description: 'AMD EPYC 7003 (Milan), enterprise NVMe SSDs — proven reliability, strong performance/cost ratio'
+              usefulLifeMonths: 60,
+              residualPct: 0.30,
+              description: 'AMD EPYC 7003 (Milan), enterprise NVMe SSDs — proven reliability, strong performance/cost ratio',
+              residualNote: 'Strong HPC secondary market demand'
             },
             refurbished: {
               name: 'Mid-Range (Refurbished)',
@@ -85,7 +92,10 @@
               powerPerServer: 3.0,
               spacePerServer: 4,
               maintenancePerServer: 135,
-              description: 'Refurbished EPYC 7002 (Rome) / Xeon 3rd Gen, mix of enterprise & consumer NVMe, 1-year warranty typical'
+              usefulLifeMonths: 48,
+              residualPct: 0.10,
+              description: 'Refurbished EPYC 7002 (Rome) / Xeon 3rd Gen, mix of enterprise & consumer NVMe, 1-year warranty typical',
+              residualNote: 'Limited secondary market'
             },
             budget: {
               name: 'Budget (DIY / Legacy)',
@@ -95,7 +105,10 @@
               powerPerServer: 3.5,
               spacePerServer: 4,
               maintenancePerServer: 175,
-              description: 'Older Ryzen Threadripper / Xeon E5 v4, consumer SATA + NVMe, higher failure rate, 2-3 year lifespan'
+              usefulLifeMonths: 36,
+              residualPct: 0.0,
+              description: 'Older Ryzen Threadripper / Xeon E5 v4, consumer SATA + NVMe, higher failure rate, 2-3 year lifespan',
+              residualNote: 'No resale value — hardware worn out by year 3'
             }
           };
 
@@ -163,6 +176,7 @@
           const months = projectionMonths;
           let cumulativeCashFlow = -(totalHardwareCost * downPayment) - totalPledgeCad;
           let breakEvenMonth = null;
+          let exitCashFlow = cumulativeCashFlow;
 
           for (let month = 1; month <= months; month++) {
             const isFinancing = month <= loanTerm;
@@ -174,10 +188,51 @@
             if (breakEvenMonth === null && cumulativeCashFlow > 0) {
               breakEvenMonth = month;
             }
+
+            if (month === exitMonth) {
+              exitCashFlow = cumulativeCashFlow;
+            }
           }
+          // If exitMonth exceeds projection, use final value
+          if (exitMonth > months) exitCashFlow = cumulativeCashFlow;
 
           const yearlyProfit = monthlyRevenue * 12 - (totalMonthlyOpex * 12) - (monthlyPayment * 12);
           const roi = (yearlyProfit / totalHardwareCost) * 100;
+
+          // Exit valuation calculations
+          // Hardware residual: linear depreciation from 100% to residualPct over usefulLifeMonths
+          const usefulLife = hardware.usefulLifeMonths;
+          const residualFloor = hardware.residualPct;
+          const hwDepreciationPct = exitMonth >= usefulLife
+            ? residualFloor
+            : 1 - (1 - residualFloor) * exitMonth / usefulLife;
+          const hardwareResidualValue = totalHardwareCost * hwDepreciationPct;
+
+          // Remaining loan balance at exit month
+          // Formula: PV of remaining payments = P * [(1+r)^n - (1+r)^m] / [(1+r)^n - 1]
+          const remainingLoanBalance = exitMonth >= loanTerm
+            ? 0
+            : loanAmount * (Math.pow(1 + monthlyRate, loanTerm) - Math.pow(1 + monthlyRate, exitMonth))
+              / (Math.pow(1 + monthlyRate, loanTerm) - 1);
+
+          // Pledge collateral: fully returned in FIL when sectors expire (at current price)
+          const pledgeReturnedCad = totalPledgeCad;
+
+          // Cumulative operating profit (revenue - opex - loan payments) over exit period
+          var exitOperatingProfit = 0;
+          for (var m = 1; m <= exitMonth && m <= months; m++) {
+            var capex = m <= loanTerm ? monthlyPayment : 0;
+            exitOperatingProfit += monthlyRevenue - totalMonthlyOpex - capex;
+          }
+
+          // Net exit value: what you walk away with if you shut down at exitMonth
+          // = operating profit earned - down payment spent + hardware resale + pledge returned - loan payoff
+          const netExitValue = exitOperatingProfit
+            - (totalHardwareCost * downPayment)
+            + hardwareResidualValue
+            + pledgeReturnedCad
+            - remainingLoanBalance
+            - totalPledgeCad; // pledge was paid upfront, returned at exit (net zero, but show the flow)
 
           return h('div', { className: 'w-full max-w-6xl mx-auto p-6 bg-white min-h-screen' },
             h('h1', { className: 'text-3xl font-bold mb-6 text-blue-900' }, 'Filecoin Storage Provider Business Plan'),
@@ -333,12 +388,13 @@
                 h('div', { className: 'mt-4 p-3 bg-white rounded border border-blue-200' },
                   h('div', { className: 'font-bold text-sm text-blue-900' }, hardware.name),
                   h('div', { className: 'text-sm text-gray-600 mt-1' }, hardware.description),
-                  h('div', { className: 'grid grid-cols-2 md:grid-cols-5 gap-2 mt-2 text-xs' },
+                  h('div', { className: 'grid grid-cols-2 md:grid-cols-6 gap-2 mt-2 text-xs' },
                     h('div', {}, '💾 ' + hardware.storagePerServer + ' PiB/server'),
                     h('div', {}, '💰 $' + hardware.costPerServer.toLocaleString() + '/server'),
                     h('div', {}, '⚡ ' + hardware.powerPerServer + ' kW/server'),
                     h('div', {}, '🔧 $' + hardware.maintenancePerServer + '/mo maint.'),
-                    h('div', {}, '📦 ' + serversNeeded + ' servers needed')
+                    h('div', {}, '📦 ' + serversNeeded + ' servers needed'),
+                    h('div', {}, '♻️ ' + Math.round(hardware.residualPct * 100) + '% residual @ ' + hardware.usefulLifeMonths + ' mo')
                   )
                 )
               ) : null,
@@ -418,6 +474,38 @@
                       max: 2.0
                     }),
                     h('div', { className: 'text-xs text-gray-500 mt-1' }, '1 USD = ' + exchangeRate + ' CAD')
+                  )
+                ),
+                h('h3', { className: 'text-sm font-semibold text-blue-800 mb-2 mt-4' }, 'Exit Strategy'),
+                h('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' },
+                  h('div', {},
+                    h('label', { className: 'block text-sm font-medium mb-2' }, 'Exit at Month'),
+                    h('input', {
+                      type: 'number',
+                      value: exitMonth,
+                      onChange: (e) => setExitMonth(Number(e.target.value)),
+                      className: 'w-full p-2 border rounded',
+                      step: 6,
+                      min: 1,
+                      max: 120
+                    }),
+                    h('div', { className: 'text-xs text-gray-500 mt-1' },
+                      'Year ' + (exitMonth / 12).toFixed(1) + ' — ' + hardware.label + ' residual: ' + Math.round(hwDepreciationPct * 100) + '%'
+                    )
+                  ),
+                  h('div', { className: 'p-3 bg-white rounded border col-span-1 md:col-span-2' },
+                    h('div', { className: 'text-xs text-gray-500 mb-1' }, 'Hardware depreciation: ' + hardware.label),
+                    h('div', { className: 'w-full bg-gray-200 rounded-full h-3 mb-1' },
+                      h('div', {
+                        className: 'h-3 rounded-full transition-all ' +
+                          (hwDepreciationPct > 0.25 ? 'bg-green-500' : hwDepreciationPct > 0 ? 'bg-yellow-500' : 'bg-red-500'),
+                        style: { width: Math.round(hwDepreciationPct * 100) + '%' }
+                      })
+                    ),
+                    h('div', { className: 'flex justify-between text-xs text-gray-500' },
+                      h('span', {}, 'Useful life: ' + hardware.usefulLifeMonths + ' mo'),
+                      h('span', {}, 'Floor: ' + Math.round(residualFloor * 100) + '% — ' + hardware.residualNote)
+                    )
                   )
                 ),
                 // Financial summary card
@@ -541,6 +629,25 @@
                           key: key,
                           className: 'text-right px-2 ' + (key === hardwareType ? 'bg-blue-50 font-bold' : '')
                         }, '$' + hardwareConfigs[key].maintenancePerServer + '/mo')
+                      })
+                    ),
+                    // Useful life & residual
+                    h('tr', { className: 'border-b' },
+                      h('td', { className: 'py-2' }, 'Useful Life'),
+                      hardwareKeys.map(function(key) {
+                        return h('td', {
+                          key: key,
+                          className: 'text-right px-2 ' + (key === hardwareType ? 'bg-blue-50 font-bold' : '')
+                        }, hardwareConfigs[key].usefulLifeMonths + ' mo')
+                      })
+                    ),
+                    h('tr', { className: 'border-b' },
+                      h('td', { className: 'py-2' }, 'Residual Value'),
+                      hardwareKeys.map(function(key) {
+                        return h('td', {
+                          key: key,
+                          className: 'text-right px-2 ' + (key === hardwareType ? 'bg-blue-50 font-bold' : '')
+                        }, Math.round(hardwareConfigs[key].residualPct * 100) + '%')
                       })
                     ),
                     // Servers needed
@@ -756,6 +863,109 @@
                   h('div', {}, 'Pledge Collateral: $' + Math.round(totalPledgeCad).toLocaleString() + ' (' + Math.round(totalPledgeFil).toLocaleString() + ' FIL)'),
                   h('div', {}, 'Break-even: ' + (breakEvenMonth ? breakEvenMonth + ' months' : '>' + projectionMonths + ' mo')),
                   h('div', { className: 'font-bold text-green-700 mt-2' }, 'ROI: ' + roi.toFixed(1) + '%')
+                )
+              )
+            ),
+
+            // Exit Valuation
+            h('div', { className: 'mb-8' },
+              h('h2', { className: 'text-2xl font-bold mb-4 text-blue-900' }, 'Exit Valuation at Month ' + exitMonth),
+              h('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-4 mb-4' },
+                // Left: breakdown table
+                h('div', { className: 'bg-gray-50 p-4 rounded-lg' },
+                  h('table', { className: 'w-full text-sm' },
+                    h('tbody', {},
+                      h('tr', { className: 'border-b' },
+                        h('td', { className: 'py-2 text-gray-600' }, 'Cumulative Operating Profit'),
+                        h('td', { className: 'text-right py-2 font-bold ' + (exitOperatingProfit >= 0 ? 'text-green-700' : 'text-red-600') },
+                          '$' + Math.round(exitOperatingProfit).toLocaleString()
+                        )
+                      ),
+                      h('tr', { className: 'border-b' },
+                        h('td', { className: 'py-2 text-gray-600' }, 'Down Payment (sunk cost)'),
+                        h('td', { className: 'text-right py-2 font-bold text-red-600' },
+                          '-$' + Math.round(totalHardwareCost * downPayment).toLocaleString()
+                        )
+                      ),
+                      h('tr', { className: 'border-b' },
+                        h('td', { className: 'py-2 text-gray-600' },
+                          'Hardware Resale (' + Math.round(hwDepreciationPct * 100) + '% of $' + totalHardwareCost.toLocaleString() + ')'
+                        ),
+                        h('td', { className: 'text-right py-2 font-bold text-green-700' },
+                          '+$' + Math.round(hardwareResidualValue).toLocaleString()
+                        )
+                      ),
+                      h('tr', { className: 'border-b' },
+                        h('td', { className: 'py-2 text-gray-600' },
+                          'Pledge Returned (' + Math.round(totalPledgeFil).toLocaleString() + ' FIL)'
+                        ),
+                        h('td', { className: 'text-right py-2 font-bold text-green-700' },
+                          '+$' + Math.round(pledgeReturnedCad).toLocaleString()
+                        )
+                      ),
+                      h('tr', { className: 'border-b' },
+                        h('td', { className: 'py-2 text-gray-600' }, 'Pledge Paid (upfront)'),
+                        h('td', { className: 'text-right py-2 font-bold text-red-600' },
+                          '-$' + Math.round(totalPledgeCad).toLocaleString()
+                        )
+                      ),
+                      remainingLoanBalance > 0 ? h('tr', { className: 'border-b' },
+                        h('td', { className: 'py-2 text-gray-600' }, 'Loan Payoff (remaining balance)'),
+                        h('td', { className: 'text-right py-2 font-bold text-red-600' },
+                          '-$' + Math.round(remainingLoanBalance).toLocaleString()
+                        )
+                      ) : h('tr', { className: 'border-b' },
+                        h('td', { className: 'py-2 text-gray-600' }, 'Loan Payoff'),
+                        h('td', { className: 'text-right py-2 font-bold text-green-700' }, 'Paid off')
+                      ),
+                      h('tr', { className: 'bg-gray-100' },
+                        h('td', { className: 'py-3 font-bold text-lg' }, 'Net Exit Value'),
+                        h('td', { className: 'text-right py-3 font-bold text-xl ' + (netExitValue >= 0 ? 'text-green-700' : 'text-red-600') },
+                          (netExitValue >= 0 ? '+' : '') + '$' + Math.round(netExitValue).toLocaleString()
+                        )
+                      )
+                    )
+                  )
+                ),
+                // Right: summary cards
+                h('div', { className: 'space-y-3' },
+                  h('div', { className: 'p-4 rounded-lg ' + (netExitValue >= 0 ? 'bg-green-50' : 'bg-red-50') },
+                    h('div', { className: 'text-sm text-gray-600' }, 'Net Position at Exit'),
+                    h('div', { className: 'text-3xl font-bold ' + (netExitValue >= 0 ? 'text-green-700' : 'text-red-600') },
+                      (netExitValue >= 0 ? '+' : '') + '$' + Math.round(netExitValue).toLocaleString() + ' CAD'
+                    ),
+                    h('div', { className: 'text-xs text-gray-500 mt-1' },
+                      netExitValue >= 0
+                        ? 'Profitable exit — you walk away with a gain'
+                        : 'Exiting now would result in a loss'
+                    )
+                  ),
+                  h('div', { className: 'bg-gray-50 p-4 rounded-lg' },
+                    h('div', { className: 'text-sm text-gray-600 mb-2' }, 'Asset Recovery Breakdown'),
+                    h('div', { className: 'grid grid-cols-2 gap-3 text-xs' },
+                      h('div', {},
+                        h('div', { className: 'text-gray-500' }, 'Hardware Resale'),
+                        h('div', { className: 'font-bold text-base' }, '$' + Math.round(hardwareResidualValue).toLocaleString()),
+                        h('div', { className: 'text-gray-400' }, hardware.residualNote)
+                      ),
+                      h('div', {},
+                        h('div', { className: 'text-gray-500' }, 'Pledge Collateral'),
+                        h('div', { className: 'font-bold text-base' }, Math.round(totalPledgeFil).toLocaleString() + ' FIL'),
+                        h('div', { className: 'text-gray-400' }, 'Returned when sectors expire')
+                      )
+                    )
+                  ),
+                  h('div', { className: 'bg-orange-50 p-4 rounded-lg' },
+                    h('div', { className: 'text-sm text-gray-600 mb-1' }, 'Remaining Obligations'),
+                    h('div', { className: 'text-xs' },
+                      remainingLoanBalance > 0
+                        ? 'Loan balance: $' + Math.round(remainingLoanBalance).toLocaleString() + ' (' + Math.max(0, loanTermMonths - exitMonth) + ' payments left)'
+                        : 'Loan fully paid off'
+                    ),
+                    h('div', { className: 'text-xs mt-1' },
+                      'Pledge lock-up: ' + (exitMonth >= sectorDuration ? 'Sectors expired — FIL unlocked' : (sectorDuration - exitMonth) + ' months until sector expiry')
+                    )
+                  )
                 )
               )
             ),
