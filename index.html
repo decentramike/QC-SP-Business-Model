@@ -39,6 +39,51 @@
           const [filPriceLoading, setFilPriceLoading] = useState(true);
           const [lastUpdated, setLastUpdated] = useState('');
 
+          // FIP Simulation state
+          const [simOpen, setSimOpen] = useState(true);
+          const [activeFip, setActiveFip] = useState('FIP-Daybreak');
+          const [fipList, setFipList] = useState([
+            {
+              id: 'FIP-TEMPLATE',
+              title: 'Template — Add Your FIP Here',
+              status: 'template',
+              summary: 'Use this as a starting point. Duplicate and fill in the parameter overrides for any new FIP you receive.',
+              overrides: {}
+            },
+            {
+              id: 'FIP-0076',
+              title: 'Direct Data Onboarding',
+              status: 'active',
+              summary: 'Allows data to be onboarded directly to sectors without Filecoin+ DataCap, reducing gas costs and simplifying onboarding for large datasets.',
+              link: 'https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0076.md',
+              overrides: { dailyGasCost: 3, blockReward: 0.003 }
+            },
+            {
+              id: 'FIP-0084',
+              title: 'Remove Datacap from Sector Duration Multiplier',
+              status: 'draft',
+              summary: 'Proposes removing Datacap from the sector quality multiplier, shifting rewards toward base storage power.',
+              link: 'https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0084.md',
+              overrides: { datacapMultiplier: 1, blockReward: 0.012 }
+            },
+            {
+              id: 'FIP-Daybreak',
+              title: 'Daybreak: Restore Equal Sector Quality & Burn Mining Reserve',
+              status: 'draft',
+              summary: 'Eliminates the 10x verified deal weight multiplier over 12 months (all sectors equal at 1x). Burns ~282.9M FIL mining reserve. CC base reward increases ~8.5x as QAP collapses from 18.5 EiB to 2.17 EiB. Pledge per sector rises ~6.5x under FIP-0081 interaction. Annual pledge-ROI improves from ~23% to ~30%. Removes notary-gated reward distribution.',
+              link: 'https://github.com/filecoin-project/FIPs/discussions/1238',
+              overrides: { datacapMultiplier: 0, blockReward: 0.0291, pledgePerSector: 1.093 }
+            }
+          ]);
+
+          // Custom FIP form state
+          const [newFipId, setNewFipId] = useState('');
+          const [newFipTitle, setNewFipTitle] = useState('');
+          const [newFipSummary, setNewFipSummary] = useState('');
+          const [newFipLink, setNewFipLink] = useState('');
+          const [newFipOverrides, setNewFipOverrides] = useState('');
+          const [showAddFip, setShowAddFip] = useState(false);
+
           // Fetch real-time FIL price
           useEffect(() => {
             fetch('https://api.coingecko.com/api/v3/simple/price?ids=filecoin&vs_currencies=usd')
@@ -234,6 +279,71 @@
             - remainingLoanBalance
             - totalPledgeCad; // pledge was paid upfront, returned at exit (net zero, but show the flow)
 
+          // ── FIP Simulation Engine ──
+          // When a FIP is active, compute a parallel set of key metrics using its overrides
+          const simOverrides = activeFip ? (fipList.find(f => f.id === activeFip) || {}).overrides || {} : {};
+          const simActive = activeFip && Object.keys(simOverrides).length > 0;
+
+          var sim = {};
+          if (simActive) {
+            var sBlockReward   = simOverrides.blockReward       != null ? simOverrides.blockReward       : blockReward;
+            var sDatacap       = simOverrides.datacapMultiplier  != null ? simOverrides.datacapMultiplier  : datacapMultiplier;
+            var sDailyGas      = simOverrides.dailyGasCost       != null ? simOverrides.dailyGasCost       : dailyGasCost;
+            var sPledgeSector  = simOverrides.pledgePerSector     != null ? simOverrides.pledgePerSector     : pledgePerSector;
+            var sSectorDur     = simOverrides.sectorDuration      != null ? simOverrides.sectorDuration      : sectorDuration;
+
+            var sBase = sBlockReward;
+            var sBonus = sBase * sDatacap;
+            var sTotalRate = sBase + sBonus;
+            var sDailyRev = storageCapacity * 1024 * sTotalRate * filPriceCad;
+            var sMonthlyRev = sDailyRev * 30;
+
+            var sMonthlyGas = sDailyGas * 30 * filPriceCad;
+            var sTotalPledgeFil = totalSectors * sPledgeSector;
+            var sTotalPledgeCad = sTotalPledgeFil * filPriceCad;
+
+            var sOpex = monthlyPowerCost + monthlySpaceCost + monthlyBandwidth +
+                        monthlyMaintenance + monthlyInsurance + monthlySalary + sMonthlyGas;
+
+            var sNetProfit = sMonthlyRev - sOpex - monthlyPayment;
+            var sYearlyProfit = sMonthlyRev * 12 - sOpex * 12 - monthlyPayment * 12;
+            var sRoi = (sYearlyProfit / totalHardwareCost) * 100;
+
+            var sCumCash = -(totalHardwareCost * downPayment) - sTotalPledgeCad;
+            var sBreakEven = null;
+            for (var sm = 1; sm <= months; sm++) {
+              var sCapex = sm <= loanTerm ? monthlyPayment : 0;
+              sCumCash += sMonthlyRev - sOpex - sCapex;
+              if (sBreakEven === null && sCumCash > 0) sBreakEven = sm;
+            }
+
+            sim = {
+              monthlyRevenue: sMonthlyRev,
+              totalMonthlyOpex: sOpex,
+              netProfit: sNetProfit,
+              yearlyProfit: sYearlyProfit,
+              roi: sRoi,
+              breakEvenMonth: sBreakEven,
+              totalPledgeCad: sTotalPledgeCad,
+              totalPledgeFil: sTotalPledgeFil,
+              blockReward: sBlockReward,
+              datacapMultiplier: sDatacap,
+              dailyGasCost: sDailyGas,
+              pledgePerSector: sPledgeSector,
+              sectorDuration: sSectorDur
+            };
+          }
+
+          // Delta helper: returns a formatted string like "+$1,234" or "-$567"
+          function fmtDelta(newVal, oldVal, prefix, suffix) {
+            prefix = prefix || '$';
+            suffix = suffix || '';
+            var d = newVal - oldVal;
+            if (Math.abs(d) < 0.5) return null;
+            var sign = d >= 0 ? '+' : '';
+            return sign + prefix + Math.round(d).toLocaleString() + suffix;
+          }
+
           return h('div', { className: 'w-full max-w-6xl mx-auto p-6 bg-white min-h-screen' },
             h('h1', { className: 'text-3xl font-bold mb-6 text-blue-900' }, 'Filecoin Storage Provider Business Plan'),
             h('p', { className: 'text-lg mb-6 text-gray-700' }, 'Quebec, Canada - Strategic Analysis & Financial Projections'),
@@ -260,19 +370,30 @@
 
             // Configuration
             h('div', { className: 'bg-blue-50 p-6 rounded-lg mb-6' },
-              h('div', { className: 'flex items-center justify-between mb-4' },
+              h('div', { className: 'flex items-center justify-between mb-4 flex-wrap gap-2' },
                 h('h2', { className: 'text-xl font-bold' }, 'Configuration'),
-                h('div', { className: 'flex bg-white rounded-lg border overflow-hidden' },
+                h('div', { className: 'flex items-center gap-3' },
+                  h('div', { className: 'flex bg-white rounded-lg border overflow-hidden' },
+                    h('button', {
+                      onClick: () => setConfigTab('technical'),
+                      className: 'px-4 py-2 text-sm font-medium transition-colors ' +
+                        (configTab === 'technical' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100')
+                    }, 'Technical'),
+                    h('button', {
+                      onClick: () => setConfigTab('financial'),
+                      className: 'px-4 py-2 text-sm font-medium transition-colors ' +
+                        (configTab === 'financial' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100')
+                    }, 'Financial')
+                  ),
                   h('button', {
-                    onClick: () => setConfigTab('technical'),
-                    className: 'px-4 py-2 text-sm font-medium transition-colors ' +
-                      (configTab === 'technical' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100')
-                  }, 'Technical'),
-                  h('button', {
-                    onClick: () => setConfigTab('financial'),
-                    className: 'px-4 py-2 text-sm font-medium transition-colors ' +
-                      (configTab === 'financial' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100')
-                  }, 'Financial')
+                    onClick: () => setSimOpen(!simOpen),
+                    className: 'px-4 py-2 text-sm font-medium rounded-lg transition-colors border ' +
+                      (simOpen
+                        ? 'bg-amber-500 text-white border-amber-600 shadow-md'
+                        : 'bg-white text-amber-700 border-amber-300 hover:bg-amber-50')
+                  },
+                    simOpen ? 'Close Simulation' : 'FIP Simulation'
+                  )
                 )
               ),
 
@@ -532,6 +653,276 @@
                 )
               ) : null
             ),
+
+            // ═══════════════════════════════════════════════════════════
+            // FIP SIMULATION PANEL
+            // ═══════════════════════════════════════════════════════════
+            simOpen ? h('div', { className: 'bg-amber-50 border-2 border-amber-300 p-6 rounded-lg mb-6' },
+              h('div', { className: 'flex items-center justify-between mb-4' },
+                h('div', {},
+                  h('h2', { className: 'text-xl font-bold text-amber-900' }, 'FIP Simulation Lab'),
+                  h('p', { className: 'text-sm text-amber-700 mt-1' },
+                    'Select a Filecoin Improvement Proposal to simulate its impact on your business model. Add new FIPs as they come in.'
+                  )
+                ),
+                activeFip ? h('button', {
+                  onClick: () => setActiveFip(null),
+                  className: 'px-3 py-1 text-xs bg-gray-200 rounded hover:bg-gray-300'
+                }, 'Clear Simulation') : null
+              ),
+
+              // ── FIP Registry (the persistent list) ──
+              h('div', { className: 'mb-4' },
+                h('div', { className: 'flex items-center justify-between mb-2' },
+                  h('h3', { className: 'text-sm font-bold text-amber-800' }, 'FIP Registry (' + fipList.length + ' proposals)'),
+                  h('button', {
+                    onClick: () => setShowAddFip(!showAddFip),
+                    className: 'px-3 py-1 text-xs font-medium rounded transition-colors ' +
+                      (showAddFip ? 'bg-amber-600 text-white' : 'bg-white text-amber-700 border border-amber-300 hover:bg-amber-100')
+                  }, showAddFip ? 'Cancel' : '+ Add FIP')
+                ),
+
+                // ── Add FIP form ──
+                showAddFip ? h('div', { className: 'bg-white border border-amber-200 rounded-lg p-4 mb-3' },
+                  h('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-3 mb-3' },
+                    h('div', {},
+                      h('label', { className: 'block text-xs font-medium mb-1' }, 'FIP ID'),
+                      h('input', {
+                        type: 'text', value: newFipId, placeholder: 'e.g. FIP-0099',
+                        onChange: (e) => setNewFipId(e.target.value),
+                        className: 'w-full p-2 border rounded text-sm'
+                      })
+                    ),
+                    h('div', {},
+                      h('label', { className: 'block text-xs font-medium mb-1' }, 'Title'),
+                      h('input', {
+                        type: 'text', value: newFipTitle, placeholder: 'Short descriptive title',
+                        onChange: (e) => setNewFipTitle(e.target.value),
+                        className: 'w-full p-2 border rounded text-sm'
+                      })
+                    )
+                  ),
+                  h('div', { className: 'mb-3' },
+                    h('label', { className: 'block text-xs font-medium mb-1' }, 'Summary'),
+                    h('input', {
+                      type: 'text', value: newFipSummary, placeholder: 'What does this FIP change?',
+                      onChange: (e) => setNewFipSummary(e.target.value),
+                      className: 'w-full p-2 border rounded text-sm'
+                    })
+                  ),
+                  h('div', { className: 'mb-3' },
+                    h('label', { className: 'block text-xs font-medium mb-1' }, 'Link (optional)'),
+                    h('input', {
+                      type: 'text', value: newFipLink, placeholder: 'https://github.com/filecoin-project/FIPs/...',
+                      onChange: (e) => setNewFipLink(e.target.value),
+                      className: 'w-full p-2 border rounded text-sm'
+                    })
+                  ),
+                  h('div', { className: 'mb-3' },
+                    h('label', { className: 'block text-xs font-medium mb-1' }, 'Parameter Overrides (JSON)'),
+                    h('input', {
+                      type: 'text', value: newFipOverrides,
+                      placeholder: '{"blockReward": 0.005, "datacapMultiplier": 5, "dailyGasCost": 2}',
+                      onChange: (e) => setNewFipOverrides(e.target.value),
+                      className: 'w-full p-2 border rounded text-sm font-mono'
+                    }),
+                    h('div', { className: 'text-xs text-gray-500 mt-1' },
+                      'Keys: blockReward, datacapMultiplier, dailyGasCost, pledgePerSector, sectorDuration'
+                    )
+                  ),
+                  h('button', {
+                    onClick: () => {
+                      if (!newFipId || !newFipTitle) return;
+                      var overrides = {};
+                      try { overrides = newFipOverrides ? JSON.parse(newFipOverrides) : {}; } catch(e) { alert('Invalid JSON in overrides'); return; }
+                      setFipList([...fipList, {
+                        id: newFipId, title: newFipTitle, status: 'custom',
+                        summary: newFipSummary, link: newFipLink, overrides: overrides
+                      }]);
+                      setNewFipId(''); setNewFipTitle(''); setNewFipSummary(''); setNewFipLink(''); setNewFipOverrides('');
+                      setShowAddFip(false);
+                    },
+                    className: 'px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded hover:bg-amber-700'
+                  }, 'Save to Registry')
+                ) : null,
+
+                // ── FIP list cards ──
+                h('div', { className: 'space-y-2 max-h-80 overflow-y-auto' },
+                  fipList.filter(function(f) { return f.status !== 'template'; }).map(function(fip) {
+                    var isActive = activeFip === fip.id;
+                    var hasOverrides = fip.overrides && Object.keys(fip.overrides).length > 0;
+                    return h('div', {
+                      key: fip.id,
+                      className: 'flex items-start justify-between p-3 rounded-lg border transition-all cursor-pointer ' +
+                        (isActive
+                          ? 'bg-amber-200 border-amber-400 shadow-md'
+                          : 'bg-white border-gray-200 hover:border-amber-300 hover:bg-amber-50')
+                    },
+                      h('div', { className: 'flex-1 min-w-0', onClick: () => hasOverrides ? setActiveFip(isActive ? null : fip.id) : null },
+                        h('div', { className: 'flex items-center gap-2 flex-wrap' },
+                          h('span', { className: 'text-xs font-mono font-bold px-2 py-0.5 rounded ' +
+                            (fip.status === 'active' ? 'bg-green-100 text-green-800' :
+                             fip.status === 'draft' ? 'bg-blue-100 text-blue-800' :
+                             'bg-gray-100 text-gray-800')
+                          }, fip.id),
+                          h('span', { className: 'text-xs px-2 py-0.5 rounded-full ' +
+                            (fip.status === 'active' ? 'bg-green-50 text-green-700' :
+                             fip.status === 'draft' ? 'bg-blue-50 text-blue-700' :
+                             'bg-gray-50 text-gray-600')
+                          }, fip.status)
+                        ),
+                        h('div', { className: 'text-sm font-medium mt-1' }, fip.title),
+                        h('div', { className: 'text-xs text-gray-500 mt-0.5 truncate' }, fip.summary),
+                        hasOverrides ? h('div', { className: 'flex gap-1 mt-1 flex-wrap' },
+                          Object.keys(fip.overrides).map(function(key) {
+                            return h('span', {
+                              key: key,
+                              className: 'text-xs font-mono bg-gray-100 px-1.5 py-0.5 rounded'
+                            }, key + ': ' + fip.overrides[key])
+                          })
+                        ) : h('div', { className: 'text-xs text-amber-600 mt-1 italic' }, 'No parameter overrides yet')
+                      ),
+                      h('div', { className: 'flex items-center gap-1 ml-2 flex-shrink-0' },
+                        hasOverrides ? h('button', {
+                          onClick: (e) => { e.stopPropagation(); setActiveFip(isActive ? null : fip.id); },
+                          className: 'px-3 py-1 text-xs font-medium rounded transition-colors ' +
+                            (isActive ? 'bg-amber-600 text-white' : 'bg-amber-100 text-amber-800 hover:bg-amber-200')
+                        }, isActive ? 'Running' : 'Simulate') : null,
+                        fip.status === 'custom' ? h('button', {
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            if (activeFip === fip.id) setActiveFip(null);
+                            setFipList(fipList.filter(function(f) { return f.id !== fip.id; }));
+                          },
+                          className: 'px-2 py-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded'
+                        }, 'x') : null
+                      )
+                    );
+                  })
+                )
+              ),
+
+              // ── Simulation Impact Summary (only when a FIP is active) ──
+              simActive ? h('div', { className: 'mt-4 border-t-2 border-amber-300 pt-4' },
+                h('h3', { className: 'text-sm font-bold text-amber-900 mb-3' },
+                  'Simulation Impact: ' + (fipList.find(function(f) { return f.id === activeFip; }) || {}).title
+                ),
+                h('div', { className: 'grid grid-cols-2 md:grid-cols-4 gap-3' },
+                  // Monthly Revenue delta
+                  h('div', { className: 'bg-white p-3 rounded-lg border' },
+                    h('div', { className: 'text-xs text-gray-500' }, 'Monthly Revenue'),
+                    h('div', { className: 'text-lg font-bold' }, '$' + Math.round(sim.monthlyRevenue).toLocaleString()),
+                    fmtDelta(sim.monthlyRevenue, monthlyRevenue)
+                      ? h('div', { className: 'text-sm font-bold ' + (sim.monthlyRevenue >= monthlyRevenue ? 'text-green-600' : 'text-red-600') },
+                          fmtDelta(sim.monthlyRevenue, monthlyRevenue)
+                        )
+                      : h('div', { className: 'text-xs text-gray-400' }, 'No change')
+                  ),
+                  // Monthly OPEX delta
+                  h('div', { className: 'bg-white p-3 rounded-lg border' },
+                    h('div', { className: 'text-xs text-gray-500' }, 'Monthly OPEX'),
+                    h('div', { className: 'text-lg font-bold' }, '$' + Math.round(sim.totalMonthlyOpex).toLocaleString()),
+                    fmtDelta(sim.totalMonthlyOpex, totalMonthlyOpex)
+                      ? h('div', { className: 'text-sm font-bold ' + (sim.totalMonthlyOpex <= totalMonthlyOpex ? 'text-green-600' : 'text-red-600') },
+                          fmtDelta(sim.totalMonthlyOpex, totalMonthlyOpex)
+                        )
+                      : h('div', { className: 'text-xs text-gray-400' }, 'No change')
+                  ),
+                  // Net Profit delta
+                  h('div', { className: 'bg-white p-3 rounded-lg border' },
+                    h('div', { className: 'text-xs text-gray-500' }, 'Net Monthly Profit'),
+                    h('div', { className: 'text-lg font-bold ' + (sim.netProfit >= 0 ? 'text-green-700' : 'text-red-600') },
+                      '$' + Math.round(sim.netProfit).toLocaleString()
+                    ),
+                    fmtDelta(sim.netProfit, monthlyRevenue - totalMonthlyOpex - monthlyPayment)
+                      ? h('div', { className: 'text-sm font-bold ' +
+                          (sim.netProfit >= (monthlyRevenue - totalMonthlyOpex - monthlyPayment) ? 'text-green-600' : 'text-red-600') },
+                          fmtDelta(sim.netProfit, monthlyRevenue - totalMonthlyOpex - monthlyPayment)
+                        )
+                      : h('div', { className: 'text-xs text-gray-400' }, 'No change')
+                  ),
+                  // Break-Even delta
+                  h('div', { className: 'bg-white p-3 rounded-lg border' },
+                    h('div', { className: 'text-xs text-gray-500' }, 'Break-Even'),
+                    h('div', { className: 'text-lg font-bold' },
+                      sim.breakEvenMonth ? sim.breakEvenMonth + ' mo' : '>' + projectionMonths + ' mo'
+                    ),
+                    (function() {
+                      if (!breakEvenMonth && !sim.breakEvenMonth) return h('div', { className: 'text-xs text-gray-400' }, 'Still beyond window');
+                      if (!breakEvenMonth && sim.breakEvenMonth) return h('div', { className: 'text-sm font-bold text-green-600' }, 'Now reachable!');
+                      if (breakEvenMonth && !sim.breakEvenMonth) return h('div', { className: 'text-sm font-bold text-red-600' }, 'No longer reachable');
+                      var d = sim.breakEvenMonth - breakEvenMonth;
+                      if (d === 0) return h('div', { className: 'text-xs text-gray-400' }, 'No change');
+                      return h('div', { className: 'text-sm font-bold ' + (d < 0 ? 'text-green-600' : 'text-red-600') },
+                        (d > 0 ? '+' : '') + d + ' months'
+                      );
+                    })()
+                  )
+                ),
+                // Annual ROI comparison
+                h('div', { className: 'grid grid-cols-2 md:grid-cols-4 gap-3 mt-3' },
+                  h('div', { className: 'bg-white p-3 rounded-lg border' },
+                    h('div', { className: 'text-xs text-gray-500' }, 'Annual ROI'),
+                    h('div', { className: 'text-lg font-bold' }, sim.roi.toFixed(1) + '%'),
+                    (function() {
+                      var d = sim.roi - roi;
+                      if (Math.abs(d) < 0.1) return h('div', { className: 'text-xs text-gray-400' }, 'No change');
+                      return h('div', { className: 'text-sm font-bold ' + (d > 0 ? 'text-green-600' : 'text-red-600') },
+                        (d > 0 ? '+' : '') + d.toFixed(1) + ' pp'
+                      );
+                    })()
+                  ),
+                  h('div', { className: 'bg-white p-3 rounded-lg border' },
+                    h('div', { className: 'text-xs text-gray-500' }, 'Pledge Collateral'),
+                    h('div', { className: 'text-lg font-bold' }, '$' + Math.round(sim.totalPledgeCad).toLocaleString()),
+                    fmtDelta(sim.totalPledgeCad, totalPledgeCad)
+                      ? h('div', { className: 'text-sm font-bold ' + (sim.totalPledgeCad <= totalPledgeCad ? 'text-green-600' : 'text-red-600') },
+                          fmtDelta(sim.totalPledgeCad, totalPledgeCad)
+                        )
+                      : h('div', { className: 'text-xs text-gray-400' }, 'No change')
+                  ),
+                  h('div', { className: 'bg-white p-3 rounded-lg border col-span-2' },
+                    h('div', { className: 'text-xs text-gray-500 mb-1' }, 'Parameter Changes Applied'),
+                    h('div', { className: 'flex gap-2 flex-wrap' },
+                      Object.keys(simOverrides).map(function(key) {
+                        var baseVal = key === 'blockReward' ? blockReward :
+                                      key === 'datacapMultiplier' ? datacapMultiplier :
+                                      key === 'dailyGasCost' ? dailyGasCost :
+                                      key === 'pledgePerSector' ? pledgePerSector :
+                                      key === 'sectorDuration' ? sectorDuration : '?';
+                        return h('span', {
+                          key: key,
+                          className: 'text-xs font-mono px-2 py-1 rounded bg-amber-100 text-amber-800'
+                        }, key + ': ' + baseVal + ' -> ' + simOverrides[key]);
+                      })
+                    )
+                  )
+                )
+              ) : null
+
+            ) : null,
+
+            // ── Active simulation banner (shows above dashboard when sim panel is closed but FIP is active) ──
+            !simOpen && simActive ? h('div', {
+              className: 'bg-amber-100 border border-amber-300 p-3 rounded-lg mb-6 flex items-center justify-between'
+            },
+              h('div', { className: 'flex items-center gap-2' },
+                h('span', { className: 'text-amber-700 font-bold text-sm' }, 'Simulation Active:'),
+                h('span', { className: 'text-sm' },
+                  (fipList.find(function(f) { return f.id === activeFip; }) || {}).title
+                )
+              ),
+              h('div', { className: 'flex gap-2' },
+                h('button', {
+                  onClick: () => setSimOpen(true),
+                  className: 'px-3 py-1 text-xs bg-amber-200 rounded hover:bg-amber-300'
+                }, 'View Details'),
+                h('button', {
+                  onClick: () => setActiveFip(null),
+                  className: 'px-3 py-1 text-xs bg-gray-200 rounded hover:bg-gray-300'
+                }, 'Clear')
+              )
+            ) : null,
 
             // Executive Summary
             h('div', { className: 'mb-8' },
