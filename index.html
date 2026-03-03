@@ -40,8 +40,8 @@
           const [lastUpdated, setLastUpdated] = useState('');
 
           // FIP Simulation state
-          const [simOpen, setSimOpen] = useState(false);
-          const [activeFip, setActiveFip] = useState(null);
+          const [simOpen, setSimOpen] = useState(true);
+          const [activeFip, setActiveFip] = useState('FIP-Daybreak');
           const [fipList, setFipList] = useState([
             {
               id: 'FIP-TEMPLATE',
@@ -65,6 +65,14 @@
               summary: 'Proposes removing Datacap from the sector quality multiplier, shifting rewards toward base storage power.',
               link: 'https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0084.md',
               overrides: { datacapMultiplier: 1, blockReward: 0.012 }
+            },
+            {
+              id: 'FIP-Daybreak',
+              title: 'Daybreak: Restore Equal Sector Quality & Burn Mining Reserve',
+              status: 'draft',
+              summary: 'Eliminates the 10x verified deal weight multiplier over 12 months (all sectors equal at 1x). Burns ~282.9M FIL mining reserve. CC base reward increases ~8.5x as QAP collapses from 18.5 EiB to 2.17 EiB. Pledge per sector rises ~6.5x under FIP-0081 interaction. Annual pledge-ROI improves from ~23% to ~30%. Removes notary-gated reward distribution.',
+              link: 'https://github.com/filecoin-project/FIPs/discussions/1238',
+              overrides: { datacapMultiplier: 0, blockReward: 0.0291, pledgePerSector: 1.093 }
             }
           ]);
 
