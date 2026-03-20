@@ -24,7 +24,7 @@ Filecoin's revenue model is sensitive to a small set of variables: block reward 
 
 ### 2. Identify Interest in Direct Storage Deals
 
-The Filecoin+ program (datacap / notary system) is one pathway to verified deals, but it is not the only one. Direct storage arrangements — where clients contract with SPs outside the notary flow — represent an underexplored opportunity, particularly as proposals like Daybreak (FIP-1238) reduce the economic significance of the datacap multiplier.
+The Filecoin+ program (datacap / notary system) is one pathway to verified deals, but it is not the only one. Direct storage arrangements — where clients contract with SPs outside the notary flow — represent an underexplored opportunity.
 
 **What this objective drives:**
 - Modeling a "direct storage" revenue stream alongside block rewards
