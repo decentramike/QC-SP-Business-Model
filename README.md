@@ -4,7 +4,7 @@
 
 This tool exists to give Filecoin Storage Providers (SPs) a rigorous, forward-looking view of their economic position — before network changes take effect, before capital is committed, and before the market moves. It translates protocol-level proposals into P&L impact so that decisions are grounded in numbers, not assumptions.
 
-Link: https://decentramike.github.io/QC-SP-Business-Model/
+Link [here](https://decentramike.github.io/QC-SP-Business-Model/)
 ---
 
 ## Objectives
