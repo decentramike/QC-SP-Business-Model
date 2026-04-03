@@ -129,19 +129,19 @@
               name: 'Canada (Quebec)',
               flag: 'CA',
               powerCostUsd: 0.047,
-              bandwidthMo: 500,
+              bandwidthMo: 250,
               coloPerKwMo: 80,
               laborAnnual: 78000,
               corpTaxPct: 26.5,
               notes: 'Abundant hydropower, cold climate natural cooling, crypto-friendly provincial government',
-              strengths: 'Cheapest power in N. America, natural cooling, stable grid',
+              strengths: 'Cheapest power in N. America, natural cooling, stable grid, affordable bandwidth',
               weaknesses: 'Smaller talent pool, distance from major IX hubs'
             },
             'us-tx': {
               name: 'US (Texas)',
               flag: 'US',
               powerCostUsd: 0.06,
-              bandwidthMo: 800,
+              bandwidthMo: 400,
               coloPerKwMo: 90,
               laborAnnual: 115000,
               corpTaxPct: 21,
@@ -153,7 +153,7 @@
               name: 'US (Virginia)',
               flag: 'US',
               powerCostUsd: 0.08,
-              bandwidthMo: 600,
+              bandwidthMo: 300,
               coloPerKwMo: 140,
               laborAnnual: 130000,
               corpTaxPct: 21,
@@ -165,13 +165,13 @@
               name: 'China (Sichuan)',
               flag: 'CN',
               powerCostUsd: 0.04,
-              bandwidthMo: 300,
+              bandwidthMo: 900,
               coloPerKwMo: 60,
               laborAnnual: 35000,
               corpTaxPct: 25,
-              notes: 'Lowest energy costs globally via hydropower, largest historical SP base. Cross-border bandwidth is throttled.',
+              notes: 'Lowest energy costs globally via hydropower, largest historical SP base. Cross-border bandwidth is throttled and expensive.',
               strengths: 'Cheapest energy + colo, strong hardware supply chain, largest SP base',
-              weaknesses: 'International bandwidth constraints, regulatory uncertainty, GPU export restrictions'
+              weaknesses: 'Cross-border bandwidth throttled and costly, regulatory uncertainty, GPU export restrictions'
             },
             'eu-de': {
               name: 'EU (Germany)',
@@ -201,7 +201,7 @@
               name: 'India (Mumbai)',
               flag: 'IN',
               powerCostUsd: 0.07,
-              bandwidthMo: 350,
+              bandwidthMo: 500,
               coloPerKwMo: 60,
               laborAnnual: 20000,
               corpTaxPct: 25,
@@ -889,7 +889,7 @@
                     h('div', { className: 'text-xs text-gray-400' }, 'Per-kW rack pricing')
                   ),
                   h('div', { className: 'bg-emerald-50 p-3 rounded' },
-                    h('div', { className: 'text-xs text-gray-500' }, 'SP Engineer Salary'),
+                    h('div', { className: 'text-xs text-gray-500' }, 'Avg DC Workforce Cost'),
                     h('div', { className: 'text-lg font-bold' }, '$' + (geo.laborAnnual / 1000).toFixed(0) + 'K/yr'),
                     h('div', { className: 'text-xs text-gray-400' }, 'USD, annual')
                   )
@@ -916,7 +916,7 @@
                       h('th', { className: 'text-right py-2 px-2' }, 'Power/mo'),
                       h('th', { className: 'text-right py-2 px-2' }, 'Bandwidth'),
                       h('th', { className: 'text-right py-2 px-2' }, 'Colo'),
-                      h('th', { className: 'text-right py-2 px-2' }, 'Labor'),
+                      h('th', { className: 'text-right py-2 px-2' }, 'Workforce'),
                       h('th', { className: 'text-right py-2 px-2 font-bold' }, 'Total OPEX'),
                       h('th', { className: 'text-right py-2 px-2' }, 'vs Quebec')
                     )
