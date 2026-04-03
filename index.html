@@ -7,6 +7,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { margin: 0; padding: 0; background: #f3f4f6; }
+        .section-toggle { transition: max-height 0.3s ease, opacity 0.2s ease; overflow: hidden; }
+        .section-toggle.collapsed { max-height: 0; opacity: 0; }
+        .section-toggle.expanded { max-height: 5000px; opacity: 1; }
     </style>
 </head>
 <body>
@@ -19,7 +22,28 @@
     <script>
         const { useState, useEffect, createElement: h } = React;
 
+        // ── Collapsible Section Component ──
+        function Section(props) {
+          var open = props.open !== false; // default open
+          var toggle = props.onToggle;
+          return h('div', { className: 'mb-8' },
+            h('div', {
+              className: 'flex items-center justify-between cursor-pointer select-none group',
+              onClick: toggle
+            },
+              h('h2', { className: 'text-2xl font-bold text-blue-900 group-hover:text-blue-700 transition-colors' }, props.title),
+              h('span', { className: 'text-gray-400 text-lg transition-transform ' + (open ? 'rotate-0' : '-rotate-90') },
+                open ? '\u25BC' : '\u25B6'
+              )
+            ),
+            h('div', { className: 'section-toggle ' + (open ? 'expanded' : 'collapsed') },
+              h('div', { className: 'pt-4' }, props.children)
+            )
+          );
+        }
+
         function FilecoinBusinessPlan() {
+          // ── Core state ──
           const [storageCapacity, setStorageCapacity] = useState(10);
           const [powerCost, setPowerCost] = useState(0.065);
           const [datacapMultiplier, setDatacapMultiplier] = useState(10);
@@ -28,7 +52,6 @@
           const [pledgePerSector, setPledgePerSector] = useState(0.07);
           const [dailyGasCost, setDailyGasCost] = useState(5);
           const [sectorDuration, setSectorDuration] = useState(12);
-          const [configTab, setConfigTab] = useState('technical');
           const [downPaymentPct, setDownPaymentPct] = useState(20);
           const [interestRatePct, setInterestRatePct] = useState(7);
           const [loanTermMonths, setLoanTermMonths] = useState(36);
@@ -39,13 +62,30 @@
           const [filPriceLoading, setFilPriceLoading] = useState(true);
           const [lastUpdated, setLastUpdated] = useState('');
 
-          // FIP Simulation state
-          const [simOpen, setSimOpen] = useState(true);
+          // ── View toggles ──
+          const [activeView, setActiveView] = useState('technical'); // technical | financial | fip | geography
+          const [showAssumptions, setShowAssumptions] = useState(false);
+
+          // ── Section collapse state ──
+          const [sections, setSections] = useState({
+            executive: true,
+            hardware: false,
+            capex: false,
+            opex: true,
+            revenue: true,
+            metrics: true,
+            exit: false
+          });
+          function toggleSection(key) {
+            setSections(function(prev) { var n = Object.assign({}, prev); n[key] = !n[key]; return n; });
+          }
+
+          // ── FIP Simulation state ──
           const [activeFip, setActiveFip] = useState('FIP-Daybreak');
           const [fipList, setFipList] = useState([
             {
               id: 'FIP-TEMPLATE',
-              title: 'Template — Add Your FIP Here',
+              title: 'Template -- Add Your FIP Here',
               status: 'template',
               summary: 'Use this as a starting point. Duplicate and fill in the parameter overrides for any new FIP you receive.',
               overrides: {}
@@ -75,8 +115,6 @@
               overrides: { datacapMultiplier: 0, blockReward: 0.0291, pledgePerSector: 1.093 }
             }
           ]);
-
-          // Custom FIP form state
           const [newFipId, setNewFipId] = useState('');
           const [newFipTitle, setNewFipTitle] = useState('');
           const [newFipSummary, setNewFipSummary] = useState('');
@@ -84,18 +122,143 @@
           const [newFipOverrides, setNewFipOverrides] = useState('');
           const [showAddFip, setShowAddFip] = useState(false);
 
+          // ── Geography state & data ──
+          const [selectedGeo, setSelectedGeo] = useState('canada-qc');
+          const geoProfiles = {
+            'canada-qc': {
+              name: 'Canada (Quebec)',
+              flag: 'CA',
+              powerCostUsd: 0.047,
+              bandwidthMo: 500,
+              coloPerKwMo: 80,
+              laborAnnual: 78000,
+              corpTaxPct: 26.5,
+              notes: 'Abundant hydropower, cold climate natural cooling, crypto-friendly provincial government',
+              strengths: 'Cheapest power in N. America, natural cooling, stable grid',
+              weaknesses: 'Smaller talent pool, distance from major IX hubs'
+            },
+            'us-tx': {
+              name: 'US (Texas)',
+              flag: 'US',
+              powerCostUsd: 0.06,
+              bandwidthMo: 800,
+              coloPerKwMo: 90,
+              laborAnnual: 115000,
+              corpTaxPct: 21,
+              notes: 'Deregulated energy market, no state income tax, growing datacenter hub',
+              strengths: 'Low power costs, deep capital markets, no state income tax',
+              weaknesses: 'Grid reliability concerns (ERCOT), rising AI datacenter competition'
+            },
+            'us-va': {
+              name: 'US (Virginia)',
+              flag: 'US',
+              powerCostUsd: 0.08,
+              bandwidthMo: 600,
+              coloPerKwMo: 140,
+              laborAnnual: 130000,
+              corpTaxPct: 21,
+              notes: 'World largest datacenter market (Ashburn), premium connectivity',
+              strengths: 'Best connectivity, deepest colo supply, strong talent pool',
+              weaknesses: 'High costs across the board, intense AI datacenter competition for space'
+            },
+            'china': {
+              name: 'China (Sichuan)',
+              flag: 'CN',
+              powerCostUsd: 0.04,
+              bandwidthMo: 300,
+              coloPerKwMo: 60,
+              laborAnnual: 35000,
+              corpTaxPct: 25,
+              notes: 'Lowest energy costs globally via hydropower, largest historical SP base. Cross-border bandwidth is throttled.',
+              strengths: 'Cheapest energy + colo, strong hardware supply chain, largest SP base',
+              weaknesses: 'International bandwidth constraints, regulatory uncertainty, GPU export restrictions'
+            },
+            'eu-de': {
+              name: 'EU (Germany)',
+              flag: 'DE',
+              powerCostUsd: 0.20,
+              bandwidthMo: 700,
+              coloPerKwMo: 160,
+              laborAnnual: 95000,
+              corpTaxPct: 30,
+              notes: 'Highest energy costs in major markets. Strong IX ecosystem (DE-CIX Frankfurt).',
+              strengths: 'GDPR-compliant storage premium, strong IX infrastructure',
+              weaknesses: 'Very high energy costs, high corporate tax, expensive colo'
+            },
+            'eu-nordics': {
+              name: 'EU (Nordics)',
+              flag: 'NO',
+              powerCostUsd: 0.06,
+              bandwidthMo: 600,
+              coloPerKwMo: 90,
+              laborAnnual: 85000,
+              corpTaxPct: 22,
+              notes: 'Abundant hydropower, natural cooling (sub-zero temps), GDPR jurisdiction.',
+              strengths: 'Cheapest European energy, natural cooling, GDPR compliance moat',
+              weaknesses: 'Small talent pool, limited colo capacity, remote location'
+            },
+            'india': {
+              name: 'India (Mumbai)',
+              flag: 'IN',
+              powerCostUsd: 0.07,
+              bandwidthMo: 350,
+              coloPerKwMo: 60,
+              laborAnnual: 20000,
+              corpTaxPct: 25,
+              notes: 'Rapidly growing DC market. Data localization laws create captive local demand.',
+              strengths: 'Low labor + energy costs, growing talent, data localization demand',
+              weaknesses: 'Infrastructure reliability, 10-30% import duties on server hardware'
+            },
+            'uae': {
+              name: 'Middle East (UAE)',
+              flag: 'AE',
+              powerCostUsd: 0.04,
+              bandwidthMo: 900,
+              coloPerKwMo: 120,
+              laborAnnual: 70000,
+              corpTaxPct: 9,
+              notes: 'Heavily subsidized energy, aggressive economic diversification, crypto-friendly free zones.',
+              strengths: 'Cheapest energy globally, low tax (9% corp), regulatory push to diversify',
+              weaknesses: 'High cooling costs due to climate, smaller technical talent pool'
+            },
+            'sea': {
+              name: 'SE Asia (Malaysia)',
+              flag: 'MY',
+              powerCostUsd: 0.06,
+              bandwidthMo: 400,
+              coloPerKwMo: 70,
+              laborAnnual: 25000,
+              corpTaxPct: 24,
+              notes: 'Competitive costs outside Singapore. Rapidly improving connectivity.',
+              strengths: 'Low costs, improving connectivity, growing DC infrastructure',
+              weaknesses: 'Smaller talent pool, less DC infrastructure than Tier 1 markets'
+            },
+            'africa': {
+              name: 'Africa (Kenya)',
+              flag: 'KE',
+              powerCostUsd: 0.08,
+              bandwidthMo: 1200,
+              coloPerKwMo: 150,
+              laborAnnual: 18000,
+              corpTaxPct: 30,
+              notes: 'Limited DC supply, expensive bandwidth. Nairobi is a growing hub.',
+              strengths: 'Low labor costs, untapped market, some cheap power (Ethiopia hydro)',
+              weaknesses: 'Infrastructure reliability, expensive bandwidth, limited DC supply'
+            }
+          };
+
           // Fetch real-time FIL price
-          useEffect(() => {
+          useEffect(function() {
             fetch('https://api.coingecko.com/api/v3/simple/price?ids=filecoin&vs_currencies=usd')
-              .then(res => res.json())
-              .then(data => {
+              .then(function(res) { return res.json(); })
+              .then(function(data) {
                 if (data.filecoin && data.filecoin.usd) {
                   setFilPrice(data.filecoin.usd);
                   setLastUpdated(new Date().toLocaleString());
                 }
                 setFilPriceLoading(false);
               })
-              .catch(err => {
+              .catch(function(err) {
                 console.error('Failed to fetch FIL price:', err);
                 setFilPriceLoading(false);
               });
@@ -104,85 +267,49 @@
           // Hardware configurations
           const hardwareConfigs = {
             enterprise: {
-              name: 'Enterprise (Datacenter Grade)',
-              label: 'Enterprise',
-              storagePerServer: 0.6,
-              costPerServer: 65000,
-              powerPerServer: 2.0,
-              spacePerServer: 4,
-              maintenancePerServer: 75,
-              usefulLifeMonths: 60,
-              residualPct: 0.40,
-              description: 'AMD EPYC 9004 (Genoa), enterprise U.2 NVMe, ECC RAM, redundant PSU — maximum density & efficiency',
+              name: 'Enterprise (Datacenter Grade)', label: 'Enterprise',
+              storagePerServer: 0.6, costPerServer: 65000, powerPerServer: 2.0, spacePerServer: 4,
+              maintenancePerServer: 75, usefulLifeMonths: 60, residualPct: 0.40,
+              description: 'AMD EPYC 9004 (Genoa), enterprise U.2 NVMe, ECC RAM, redundant PSU',
               residualNote: 'High HPC/AI inference resale value'
             },
             premium: {
-              name: 'Premium (Current Gen)',
-              label: 'Premium',
-              storagePerServer: 0.5,
-              costPerServer: 45000,
-              powerPerServer: 2.5,
-              spacePerServer: 4,
-              maintenancePerServer: 100,
-              usefulLifeMonths: 60,
-              residualPct: 0.30,
-              description: 'AMD EPYC 7003 (Milan), enterprise NVMe SSDs — proven reliability, strong performance/cost ratio',
+              name: 'Premium (Current Gen)', label: 'Premium',
+              storagePerServer: 0.5, costPerServer: 45000, powerPerServer: 2.5, spacePerServer: 4,
+              maintenancePerServer: 100, usefulLifeMonths: 60, residualPct: 0.30,
+              description: 'AMD EPYC 7003 (Milan), enterprise NVMe SSDs -- proven reliability',
               residualNote: 'Strong HPC secondary market demand'
             },
             refurbished: {
-              name: 'Mid-Range (Refurbished)',
-              label: 'Mid-Range',
-              storagePerServer: 0.35,
-              costPerServer: 25000,
-              powerPerServer: 3.0,
-              spacePerServer: 4,
-              maintenancePerServer: 135,
-              usefulLifeMonths: 48,
-              residualPct: 0.10,
-              description: 'Refurbished EPYC 7002 (Rome) / Xeon 3rd Gen, mix of enterprise & consumer NVMe, 1-year warranty typical',
+              name: 'Mid-Range (Refurbished)', label: 'Mid-Range',
+              storagePerServer: 0.35, costPerServer: 25000, powerPerServer: 3.0, spacePerServer: 4,
+              maintenancePerServer: 135, usefulLifeMonths: 48, residualPct: 0.10,
+              description: 'Refurbished EPYC 7002 (Rome) / Xeon 3rd Gen, mix of enterprise & consumer NVMe',
               residualNote: 'Limited secondary market'
             },
             budget: {
-              name: 'Budget (DIY / Legacy)',
-              label: 'Budget',
-              storagePerServer: 0.25,
-              costPerServer: 15000,
-              powerPerServer: 3.5,
-              spacePerServer: 4,
-              maintenancePerServer: 175,
-              usefulLifeMonths: 36,
-              residualPct: 0.0,
-              description: 'Older Ryzen Threadripper / Xeon E5 v4, consumer SATA + NVMe, higher failure rate, 2-3 year lifespan',
-              residualNote: 'No resale value — hardware worn out by year 3'
+              name: 'Budget (DIY / Legacy)', label: 'Budget',
+              storagePerServer: 0.25, costPerServer: 15000, powerPerServer: 3.5, spacePerServer: 4,
+              maintenancePerServer: 175, usefulLifeMonths: 36, residualPct: 0.0,
+              description: 'Older Ryzen Threadripper / Xeon E5 v4, consumer SATA + NVMe',
+              residualNote: 'No resale value'
             }
           };
-
           const hardwareKeys = Object.keys(hardwareConfigs);
-
           const hardware = hardwareConfigs[hardwareType];
 
-          // FIL price in CAD (needed for pledge and gas calculations)
+          // ── Calculations ──
           const filPriceCad = filPrice * exchangeRate;
-
-          // Pledge collateral calculation
-          // Source: https://docs.filecoin.io/storage-providers/filecoin-economics/fil-collateral
-          // Initial pledge = storage pledge + consensus pledge, locked per sector
-          const sectorsPerTiB = 32; // 1 TiB = 32 sectors of 32 GiB
+          const sectorsPerTiB = 32;
           const totalSectors = storageCapacity * 1024 * sectorsPerTiB;
           const totalPledgeFil = totalSectors * pledgePerSector;
           const totalPledgeCad = totalPledgeFil * filPriceCad;
-
-          // Gas costs (monthly, in CAD)
-          // Source: https://docs.filecoin.io/storage-providers/filecoin-economics/block-rewards
-          // Covers WindowPoSt, sector commits, and other on-chain messages
           const monthlyGasCost = dailyGasCost * 30 * filPriceCad;
 
-          // Hardware assumptions
           const serversNeeded = Math.ceil(storageCapacity / hardware.storagePerServer);
           const costPerServer = hardware.costPerServer;
           const totalHardwareCost = serversNeeded * costPerServer;
 
-          // Financing assumptions (from configurable state)
           const downPayment = downPaymentPct / 100;
           const loanTerm = loanTermMonths;
           const interestRate = interestRatePct / 100;
@@ -190,7 +317,6 @@
           const loanAmount = totalHardwareCost * (1 - downPayment);
           const monthlyPayment = loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, loanTerm)) / (Math.pow(1 + monthlyRate, loanTerm) - 1);
 
-          // Operational costs
           const powerPerServer = hardware.powerPerServer;
           const totalPowerKw = powerPerServer * serversNeeded;
           const monthlyPowerCost = totalPowerKw * 24 * 30 * powerCost;
@@ -208,107 +334,69 @@
           const totalMonthlyOpex = monthlyPowerCost + monthlySpaceCost + monthlyBandwidth +
                                    monthlyMaintenance + monthlyInsurance + monthlySalary + monthlyGasCost;
 
-          // Revenue assumptions
-          // Source: https://filfox.info/en (24h average mining reward as of Feb 2026)
           const baseBlockReward = blockReward;
           const datacapBonus = baseBlockReward * datacapMultiplier;
           const totalRewardRate = baseBlockReward + datacapBonus;
-
           const dailyRevenue = storageCapacity * 1024 * totalRewardRate * filPriceCad;
           const monthlyRevenue = dailyRevenue * 30;
 
-          // Calculate projections
           const months = projectionMonths;
-          let cumulativeCashFlow = -(totalHardwareCost * downPayment) - totalPledgeCad;
-          let breakEvenMonth = null;
-          let exitCashFlow = cumulativeCashFlow;
+          var cumulativeCashFlow = -(totalHardwareCost * downPayment) - totalPledgeCad;
+          var breakEvenMonth = null;
+          var exitCashFlow = cumulativeCashFlow;
 
-          for (let month = 1; month <= months; month++) {
-            const isFinancing = month <= loanTerm;
-            const monthlyCapex = isFinancing ? monthlyPayment : 0;
-            const totalMonthlyCost = totalMonthlyOpex + monthlyCapex;
-            const monthlyProfit = monthlyRevenue - totalMonthlyCost;
+          for (var month = 1; month <= months; month++) {
+            var isFinancing = month <= loanTerm;
+            var monthlyCapex = isFinancing ? monthlyPayment : 0;
+            var totalMonthlyCost = totalMonthlyOpex + monthlyCapex;
+            var monthlyProfit = monthlyRevenue - totalMonthlyCost;
             cumulativeCashFlow += monthlyProfit;
-
-            if (breakEvenMonth === null && cumulativeCashFlow > 0) {
-              breakEvenMonth = month;
-            }
-
-            if (month === exitMonth) {
-              exitCashFlow = cumulativeCashFlow;
-            }
+            if (breakEvenMonth === null && cumulativeCashFlow > 0) breakEvenMonth = month;
+            if (month === exitMonth) exitCashFlow = cumulativeCashFlow;
           }
-          // If exitMonth exceeds projection, use final value
           if (exitMonth > months) exitCashFlow = cumulativeCashFlow;
 
           const yearlyProfit = monthlyRevenue * 12 - (totalMonthlyOpex * 12) - (monthlyPayment * 12);
           const roi = (yearlyProfit / totalHardwareCost) * 100;
 
-          // Exit valuation calculations
-          // Hardware residual: linear depreciation from 100% to residualPct over usefulLifeMonths
+          // Exit valuation
           const usefulLife = hardware.usefulLifeMonths;
           const residualFloor = hardware.residualPct;
-          const hwDepreciationPct = exitMonth >= usefulLife
-            ? residualFloor
-            : 1 - (1 - residualFloor) * exitMonth / usefulLife;
+          const hwDepreciationPct = exitMonth >= usefulLife ? residualFloor : 1 - (1 - residualFloor) * exitMonth / usefulLife;
           const hardwareResidualValue = totalHardwareCost * hwDepreciationPct;
-
-          // Remaining loan balance at exit month
-          // Formula: PV of remaining payments = P * [(1+r)^n - (1+r)^m] / [(1+r)^n - 1]
-          const remainingLoanBalance = exitMonth >= loanTerm
-            ? 0
-            : loanAmount * (Math.pow(1 + monthlyRate, loanTerm) - Math.pow(1 + monthlyRate, exitMonth))
-              / (Math.pow(1 + monthlyRate, loanTerm) - 1);
-
-          // Pledge collateral: fully returned in FIL when sectors expire (at current price)
+          const remainingLoanBalance = exitMonth >= loanTerm ? 0
+            : loanAmount * (Math.pow(1 + monthlyRate, loanTerm) - Math.pow(1 + monthlyRate, exitMonth)) / (Math.pow(1 + monthlyRate, loanTerm) - 1);
           const pledgeReturnedCad = totalPledgeCad;
 
-          // Cumulative operating profit (revenue - opex - loan payments) over exit period
           var exitOperatingProfit = 0;
           for (var m = 1; m <= exitMonth && m <= months; m++) {
             var capex = m <= loanTerm ? monthlyPayment : 0;
             exitOperatingProfit += monthlyRevenue - totalMonthlyOpex - capex;
           }
-
-          // Net exit value: what you walk away with if you shut down at exitMonth
-          // = operating profit earned - down payment spent + hardware resale + pledge returned - loan payoff
-          const netExitValue = exitOperatingProfit
-            - (totalHardwareCost * downPayment)
-            + hardwareResidualValue
-            + pledgeReturnedCad
-            - remainingLoanBalance
-            - totalPledgeCad; // pledge was paid upfront, returned at exit (net zero, but show the flow)
+          const netExitValue = exitOperatingProfit - (totalHardwareCost * downPayment) + hardwareResidualValue + pledgeReturnedCad - remainingLoanBalance - totalPledgeCad;
 
           // ── FIP Simulation Engine ──
-          // When a FIP is active, compute a parallel set of key metrics using its overrides
-          const simOverrides = activeFip ? (fipList.find(f => f.id === activeFip) || {}).overrides || {} : {};
+          const simOverrides = activeFip ? (fipList.find(function(f) { return f.id === activeFip; }) || {}).overrides || {} : {};
           const simActive = activeFip && Object.keys(simOverrides).length > 0;
-
           var sim = {};
           if (simActive) {
-            var sBlockReward   = simOverrides.blockReward       != null ? simOverrides.blockReward       : blockReward;
-            var sDatacap       = simOverrides.datacapMultiplier  != null ? simOverrides.datacapMultiplier  : datacapMultiplier;
-            var sDailyGas      = simOverrides.dailyGasCost       != null ? simOverrides.dailyGasCost       : dailyGasCost;
-            var sPledgeSector  = simOverrides.pledgePerSector     != null ? simOverrides.pledgePerSector     : pledgePerSector;
-            var sSectorDur     = simOverrides.sectorDuration      != null ? simOverrides.sectorDuration      : sectorDuration;
-
+            var sBlockReward  = simOverrides.blockReward != null ? simOverrides.blockReward : blockReward;
+            var sDatacap      = simOverrides.datacapMultiplier != null ? simOverrides.datacapMultiplier : datacapMultiplier;
+            var sDailyGas     = simOverrides.dailyGasCost != null ? simOverrides.dailyGasCost : dailyGasCost;
+            var sPledgeSector = simOverrides.pledgePerSector != null ? simOverrides.pledgePerSector : pledgePerSector;
+            var sSectorDur    = simOverrides.sectorDuration != null ? simOverrides.sectorDuration : sectorDuration;
             var sBase = sBlockReward;
             var sBonus = sBase * sDatacap;
             var sTotalRate = sBase + sBonus;
             var sDailyRev = storageCapacity * 1024 * sTotalRate * filPriceCad;
             var sMonthlyRev = sDailyRev * 30;
-
             var sMonthlyGas = sDailyGas * 30 * filPriceCad;
             var sTotalPledgeFil = totalSectors * sPledgeSector;
             var sTotalPledgeCad = sTotalPledgeFil * filPriceCad;
-
-            var sOpex = monthlyPowerCost + monthlySpaceCost + monthlyBandwidth +
-                        monthlyMaintenance + monthlyInsurance + monthlySalary + sMonthlyGas;
-
+            var sOpex = monthlyPowerCost + monthlySpaceCost + monthlyBandwidth + monthlyMaintenance + monthlyInsurance + monthlySalary + sMonthlyGas;
             var sNetProfit = sMonthlyRev - sOpex - monthlyPayment;
             var sYearlyProfit = sMonthlyRev * 12 - sOpex * 12 - monthlyPayment * 12;
             var sRoi = (sYearlyProfit / totalHardwareCost) * 100;
-
             var sCumCash = -(totalHardwareCost * downPayment) - sTotalPledgeCad;
             var sBreakEven = null;
             for (var sm = 1; sm <= months; sm++) {
@@ -316,25 +404,27 @@
               sCumCash += sMonthlyRev - sOpex - sCapex;
               if (sBreakEven === null && sCumCash > 0) sBreakEven = sm;
             }
-
             sim = {
-              monthlyRevenue: sMonthlyRev,
-              totalMonthlyOpex: sOpex,
-              netProfit: sNetProfit,
-              yearlyProfit: sYearlyProfit,
-              roi: sRoi,
-              breakEvenMonth: sBreakEven,
-              totalPledgeCad: sTotalPledgeCad,
-              totalPledgeFil: sTotalPledgeFil,
-              blockReward: sBlockReward,
-              datacapMultiplier: sDatacap,
-              dailyGasCost: sDailyGas,
-              pledgePerSector: sPledgeSector,
-              sectorDuration: sSectorDur
+              monthlyRevenue: sMonthlyRev, totalMonthlyOpex: sOpex, netProfit: sNetProfit,
+              yearlyProfit: sYearlyProfit, roi: sRoi, breakEvenMonth: sBreakEven,
+              totalPledgeCad: sTotalPledgeCad, totalPledgeFil: sTotalPledgeFil,
+              blockReward: sBlockReward, datacapMultiplier: sDatacap,
+              dailyGasCost: sDailyGas, pledgePerSector: sPledgeSector, sectorDuration: sSectorDur
             };
           }
 
-          // Delta helper: returns a formatted string like "+$1,234" or "-$567"
+          // ── Geography comparison engine ──
+          var geo = geoProfiles[selectedGeo];
+          var geoKeys = Object.keys(geoProfiles);
+          function geoMonthlyOpex(profile) {
+            var pCostLocal = profile.powerCostUsd * exchangeRate;
+            var pwr = totalPowerKw * 24 * 30 * pCostLocal;
+            var bw = profile.bandwidthMo * exchangeRate;
+            var colo = rackSpaceNeeded * profile.coloPerKwMo * exchangeRate;
+            var labor = (profile.laborAnnual / 12) * exchangeRate;
+            return pwr + bw + colo + labor + monthlyInsurance + monthlyGasCost;
+          }
+
           function fmtDelta(newVal, oldVal, prefix, suffix) {
             prefix = prefix || '$';
             suffix = suffix || '';
@@ -344,21 +434,65 @@
             return sign + prefix + Math.round(d).toLocaleString() + suffix;
           }
 
+          // ══════════════════════════════════════════
+          // RENDER
+          // ══════════════════════════════════════════
           return h('div', { className: 'w-full max-w-6xl mx-auto p-6 bg-white min-h-screen' },
-            h('h1', { className: 'text-3xl font-bold mb-6 text-blue-900' }, 'Filecoin Storage Provider Business Plan'),
-            h('p', { className: 'text-lg mb-6 text-gray-700' }, 'Quebec, Canada - Strategic Analysis & Financial Projections'),
 
-            // Real-time FIL Price Banner
+            // ── Top Bar: Title + Toggle Pills ──
+            h('div', { className: 'flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4' },
+              h('div', {},
+                h('h1', { className: 'text-3xl font-bold text-blue-900' }, 'Filecoin SP Business Plan'),
+                h('p', { className: 'text-sm text-gray-500 mt-1' }, 'Strategic Analysis & Financial Projections')
+              ),
+              h('div', { className: 'flex flex-wrap items-center gap-2' },
+                // View toggle pills
+                ['technical', 'financial', 'fip', 'geography'].map(function(view) {
+                  var labels = { technical: 'Technical', financial: 'Financial', fip: 'FIP Simulation', geography: 'Geography' };
+                  var colors = {
+                    technical: activeView === 'technical' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-blue-700 border border-blue-200 hover:bg-blue-50',
+                    financial: activeView === 'financial' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-blue-700 border border-blue-200 hover:bg-blue-50',
+                    fip: activeView === 'fip' ? 'bg-amber-500 text-white shadow-md' : 'bg-white text-amber-700 border border-amber-200 hover:bg-amber-50',
+                    geography: activeView === 'geography' ? 'bg-emerald-600 text-white shadow-md' : 'bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-50'
+                  };
+                  return h('button', {
+                    key: view,
+                    onClick: function() { setActiveView(view); },
+                    className: 'px-4 py-2 text-sm font-medium rounded-lg transition-all ' + colors[view]
+                  }, labels[view]);
+                }),
+                // Divider
+                h('span', { className: 'text-gray-300 hidden md:inline' }, '|'),
+                // Key Assumptions toggle
+                h('button', {
+                  onClick: function() { setShowAssumptions(!showAssumptions); },
+                  className: 'px-3 py-2 text-xs font-medium rounded-lg transition-all ' +
+                    (showAssumptions ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200')
+                }, showAssumptions ? 'Hide Assumptions' : 'Key Assumptions')
+              )
+            ),
+
+            // ── Active sim banner (always visible when a FIP is active) ──
+            simActive && activeView !== 'fip' ? h('div', {
+              className: 'bg-amber-100 border border-amber-300 p-3 rounded-lg mb-6 flex items-center justify-between'
+            },
+              h('div', { className: 'flex items-center gap-2' },
+                h('span', { className: 'text-amber-700 font-bold text-sm' }, 'Simulation Active:'),
+                h('span', { className: 'text-sm' }, (fipList.find(function(f) { return f.id === activeFip; }) || {}).title)
+              ),
+              h('div', { className: 'flex gap-2' },
+                h('button', { onClick: function() { setActiveView('fip'); }, className: 'px-3 py-1 text-xs bg-amber-200 rounded hover:bg-amber-300' }, 'View Details'),
+                h('button', { onClick: function() { setActiveFip(null); }, className: 'px-3 py-1 text-xs bg-gray-200 rounded hover:bg-gray-300' }, 'Clear')
+              )
+            ) : null,
+
+            // ── FIL Price Banner ──
             h('div', { className: 'bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4 rounded-lg mb-6' },
               h('div', { className: 'flex justify-between items-center' },
                 h('div', {},
-                  h('div', { className: 'text-sm opacity-90' }, '🔴 LIVE FIL Price'),
-                  h('div', { className: 'text-3xl font-bold' },
-                    filPriceLoading ? 'Loading...' : '$' + filPrice.toFixed(2) + ' USD'
-                  ),
-                  h('div', { className: 'text-sm opacity-75' },
-                    lastUpdated ? 'Updated: ' + lastUpdated : 'Fetching from CoinGecko...'
-                  )
+                  h('div', { className: 'text-sm opacity-90' }, 'LIVE FIL Price'),
+                  h('div', { className: 'text-3xl font-bold' }, filPriceLoading ? 'Loading...' : '$' + filPrice.toFixed(2) + ' USD'),
+                  h('div', { className: 'text-sm opacity-75' }, lastUpdated ? 'Updated: ' + lastUpdated : 'Fetching from CoinGecko...')
                 ),
                 h('div', { className: 'text-right' },
                   h('div', { className: 'text-sm opacity-90' }, 'CAD Equivalent'),
@@ -368,385 +502,251 @@
               )
             ),
 
-            // Configuration
-            h('div', { className: 'bg-blue-50 p-6 rounded-lg mb-6' },
-              h('div', { className: 'flex items-center justify-between mb-4 flex-wrap gap-2' },
-                h('h2', { className: 'text-xl font-bold' }, 'Configuration'),
-                h('div', { className: 'flex items-center gap-3' },
-                  h('div', { className: 'flex bg-white rounded-lg border overflow-hidden' },
-                    h('button', {
-                      onClick: () => setConfigTab('technical'),
-                      className: 'px-4 py-2 text-sm font-medium transition-colors ' +
-                        (configTab === 'technical' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100')
-                    }, 'Technical'),
-                    h('button', {
-                      onClick: () => setConfigTab('financial'),
-                      className: 'px-4 py-2 text-sm font-medium transition-colors ' +
-                        (configTab === 'financial' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100')
-                    }, 'Financial')
-                  ),
-                  h('button', {
-                    onClick: () => setSimOpen(!simOpen),
-                    className: 'px-4 py-2 text-sm font-medium rounded-lg transition-colors border ' +
-                      (simOpen
-                        ? 'bg-amber-500 text-white border-amber-600 shadow-md'
-                        : 'bg-white text-amber-700 border-amber-300 hover:bg-amber-50')
+            // ── Key Assumptions (collapsible from top) ──
+            showAssumptions ? h('div', { className: 'bg-blue-50 p-6 rounded-lg mb-6 border border-blue-200' },
+              h('div', { className: 'flex items-center justify-between mb-3' },
+                h('h2', { className: 'text-xl font-bold' }, 'Key Assumptions'),
+                h('button', { onClick: function() { setShowAssumptions(false); }, className: 'text-xs text-gray-500 hover:text-gray-700' }, 'Hide')
+              ),
+              h('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-4 text-sm' },
+                h('ul', { className: 'space-y-1' },
+                  h('li', { className: 'font-bold text-blue-800' }, 'Market & Financing'),
+                  h('li', {}, 'FIL price: $' + filPrice.toFixed(2) + ' USD (LIVE)'),
+                  h('li', {}, 'USD/CAD: ' + exchangeRate),
+                  h('li', {}, 'Hardware: ' + hardware.name),
+                  h('li', {}, 'Quebec power: $' + powerCost + '/kWh'),
+                  h('li', {}, downPaymentPct + '% down, ' + interestRatePct + '% APR, ' + loanTermMonths + ' mo term')
+                ),
+                h('ul', { className: 'space-y-1' },
+                  h('li', { className: 'font-bold text-blue-800' }, 'Filecoin Network'),
+                  h('li', {}, 'Block reward: ' + blockReward + ' FIL/TiB/day'),
+                  h('li', {}, 'Datacap multiplier: ' + datacapMultiplier + 'x'),
+                  h('li', {}, 'Pledge: ' + pledgePerSector + ' FIL/sector'),
+                  h('li', {}, 'Gas cost: ' + dailyGasCost + ' FIL/day'),
+                  h('li', {}, 'Sector duration: ' + sectorDuration + ' months')
+                ),
+                h('ul', { className: 'space-y-1' },
+                  h('li', { className: 'font-bold text-blue-800' }, 'Operational'),
+                  h('li', {}, '95% uptime/quality score'),
+                  h('li', {}, 'No slashing penalties assumed'),
+                  h('li', {}, 'Steady state reached month 3'),
+                  h('li', {}, 'No regulatory changes'),
+                  h('li', {}, '75% block reward vests over 180 days')
+                )
+              )
+            ) : null,
+
+            // ═══════════════════════════════════════
+            // TECHNICAL VIEW
+            // ═══════════════════════════════════════
+            activeView === 'technical' ? h('div', { className: 'bg-blue-50 p-6 rounded-lg mb-6' },
+              h('h2', { className: 'text-xl font-bold mb-4' }, 'Technical Configuration'),
+              h('h3', { className: 'text-sm font-semibold text-blue-800 mb-2' }, 'Infrastructure'),
+              h('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4' },
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Hardware Type'),
+                  h('select', {
+                    value: hardwareType, onChange: function(e) { setHardwareType(e.target.value); },
+                    className: 'w-full p-2 border rounded bg-white'
                   },
-                    simOpen ? 'Close Simulation' : 'FIP Simulation'
+                    h('option', { value: 'enterprise' }, 'Enterprise (Datacenter)'),
+                    h('option', { value: 'premium' }, 'Premium (Current Gen)'),
+                    h('option', { value: 'refurbished' }, 'Mid-Range (Refurbished)'),
+                    h('option', { value: 'budget' }, 'Budget (DIY / Legacy)')
+                  )
+                ),
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Storage Capacity (PiB)'),
+                  h('input', { type: 'number', value: storageCapacity, onChange: function(e) { setStorageCapacity(Number(e.target.value)); }, className: 'w-full p-2 border rounded', min: 1, max: 100 })
+                ),
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Power Cost (CAD/kWh)'),
+                  h('input', { type: 'number', value: powerCost, onChange: function(e) { setPowerCost(Number(e.target.value)); }, className: 'w-full p-2 border rounded', step: 0.001, min: 0.03, max: 0.30 })
+                ),
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Datacap Multiplier'),
+                  h('input', { type: 'number', value: datacapMultiplier, onChange: function(e) { setDatacapMultiplier(Number(e.target.value)); }, className: 'w-full p-2 border rounded', min: 0, max: 100 })
+                )
+              ),
+              h('h3', { className: 'text-sm font-semibold text-blue-800 mb-2 mt-4' }, 'Filecoin Network Parameters'),
+              h('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4' },
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Block Reward (FIL/TiB/day)'),
+                  h('input', { type: 'number', value: blockReward, onChange: function(e) { setBlockReward(Number(e.target.value)); }, className: 'w-full p-2 border rounded', step: 0.0001, min: 0, max: 1 }),
+                  h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Source: filfox.info 24h avg')
+                ),
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Pledge per Sector (FIL/32GiB)'),
+                  h('input', { type: 'number', value: pledgePerSector, onChange: function(e) { setPledgePerSector(Number(e.target.value)); }, className: 'w-full p-2 border rounded', step: 0.01, min: 0, max: 5 }),
+                  h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Initial pledge collateral locked')
+                ),
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Gas Cost (FIL/day)'),
+                  h('input', { type: 'number', value: dailyGasCost, onChange: function(e) { setDailyGasCost(Number(e.target.value)); }, className: 'w-full p-2 border rounded', step: 0.5, min: 0, max: 50 }),
+                  h('div', { className: 'text-xs text-gray-500 mt-1' }, 'WindowPoSt + sector commits')
+                ),
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Sector Duration (months)'),
+                  h('input', { type: 'number', value: sectorDuration, onChange: function(e) { setSectorDuration(Number(e.target.value)); }, className: 'w-full p-2 border rounded', step: 1, min: 6, max: 60 }),
+                  h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Pledge lock-up period')
+                )
+              ),
+              h('div', { className: 'mt-4 p-3 bg-white rounded border border-blue-200' },
+                h('div', { className: 'font-bold text-sm text-blue-900' }, hardware.name),
+                h('div', { className: 'text-sm text-gray-600 mt-1' }, hardware.description),
+                h('div', { className: 'grid grid-cols-2 md:grid-cols-6 gap-2 mt-2 text-xs' },
+                  h('div', {}, hardware.storagePerServer + ' PiB/server'),
+                  h('div', {}, '$' + hardware.costPerServer.toLocaleString() + '/server'),
+                  h('div', {}, hardware.powerPerServer + ' kW/server'),
+                  h('div', {}, '$' + hardware.maintenancePerServer + '/mo maint.'),
+                  h('div', {}, serversNeeded + ' servers needed'),
+                  h('div', {}, Math.round(hardware.residualPct * 100) + '% residual @ ' + hardware.usefulLifeMonths + ' mo')
+                )
+              )
+            ) : null,
+
+            // ═══════════════════════════════════════
+            // FINANCIAL VIEW
+            // ═══════════════════════════════════════
+            activeView === 'financial' ? h('div', { className: 'bg-blue-50 p-6 rounded-lg mb-6' },
+              h('h2', { className: 'text-xl font-bold mb-4' }, 'Financial Configuration'),
+              h('h3', { className: 'text-sm font-semibold text-blue-800 mb-2' }, 'Financing'),
+              h('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' },
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Down Payment (%)'),
+                  h('input', { type: 'number', value: downPaymentPct, onChange: function(e) { setDownPaymentPct(Number(e.target.value)); }, className: 'w-full p-2 border rounded', step: 5, min: 0, max: 100 }),
+                  h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Upfront: $' + Math.round(totalHardwareCost * downPayment).toLocaleString() + ' CAD')
+                ),
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Interest Rate (% APR)'),
+                  h('input', { type: 'number', value: interestRatePct, onChange: function(e) { setInterestRatePct(Number(e.target.value)); }, className: 'w-full p-2 border rounded', step: 0.5, min: 0, max: 25 }),
+                  h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Annual percentage rate on loan')
+                ),
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Loan Term (months)'),
+                  h('input', { type: 'number', value: loanTermMonths, onChange: function(e) { setLoanTermMonths(Number(e.target.value)); }, className: 'w-full p-2 border rounded', step: 6, min: 6, max: 84 }),
+                  h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Payment: $' + Math.round(monthlyPayment).toLocaleString() + '/mo')
+                )
+              ),
+              h('h3', { className: 'text-sm font-semibold text-blue-800 mb-2 mt-4' }, 'Projection & Currency'),
+              h('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' },
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Projection Period (months)'),
+                  h('input', { type: 'number', value: projectionMonths, onChange: function(e) { setProjectionMonths(Number(e.target.value)); }, className: 'w-full p-2 border rounded', step: 6, min: 12, max: 120 }),
+                  h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Cash flow analysis window')
+                ),
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'USD/CAD Exchange Rate'),
+                  h('input', { type: 'number', value: exchangeRate, onChange: function(e) { setExchangeRate(Number(e.target.value)); }, className: 'w-full p-2 border rounded', step: 0.01, min: 1.0, max: 2.0 }),
+                  h('div', { className: 'text-xs text-gray-500 mt-1' }, '1 USD = ' + exchangeRate + ' CAD')
+                )
+              ),
+              h('h3', { className: 'text-sm font-semibold text-blue-800 mb-2 mt-4' }, 'Exit Strategy'),
+              h('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' },
+                h('div', {},
+                  h('label', { className: 'block text-sm font-medium mb-2' }, 'Exit at Month'),
+                  h('input', { type: 'number', value: exitMonth, onChange: function(e) { setExitMonth(Number(e.target.value)); }, className: 'w-full p-2 border rounded', step: 6, min: 1, max: 120 }),
+                  h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Year ' + (exitMonth / 12).toFixed(1) + ' -- ' + hardware.label + ' residual: ' + Math.round(hwDepreciationPct * 100) + '%')
+                ),
+                h('div', { className: 'p-3 bg-white rounded border col-span-1 md:col-span-2' },
+                  h('div', { className: 'text-xs text-gray-500 mb-1' }, 'Hardware depreciation: ' + hardware.label),
+                  h('div', { className: 'w-full bg-gray-200 rounded-full h-3 mb-1' },
+                    h('div', {
+                      className: 'h-3 rounded-full transition-all ' + (hwDepreciationPct > 0.25 ? 'bg-green-500' : hwDepreciationPct > 0 ? 'bg-yellow-500' : 'bg-red-500'),
+                      style: { width: Math.round(hwDepreciationPct * 100) + '%' }
+                    })
+                  ),
+                  h('div', { className: 'flex justify-between text-xs text-gray-500' },
+                    h('span', {}, 'Useful life: ' + hardware.usefulLifeMonths + ' mo'),
+                    h('span', {}, 'Floor: ' + Math.round(residualFloor * 100) + '% -- ' + hardware.residualNote)
                   )
                 )
               ),
-
-              // Technical tab
-              configTab === 'technical' ? h('div', {},
-                h('h3', { className: 'text-sm font-semibold text-blue-800 mb-2' }, 'Infrastructure'),
-                h('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4' },
+              h('div', { className: 'mt-4 p-3 bg-white rounded border border-blue-200' },
+                h('div', { className: 'font-bold text-sm text-blue-900 mb-2' }, 'Financing Summary'),
+                h('div', { className: 'grid grid-cols-2 md:grid-cols-4 gap-3 text-xs' },
                   h('div', {},
-                    h('label', { className: 'block text-sm font-medium mb-2' }, 'Hardware Type'),
-                    h('select', {
-                      value: hardwareType,
-                      onChange: (e) => setHardwareType(e.target.value),
-                      className: 'w-full p-2 border rounded bg-white'
-                    },
-                      h('option', { value: 'enterprise' }, 'Enterprise (Datacenter)'),
-                      h('option', { value: 'premium' }, 'Premium (Current Gen)'),
-                      h('option', { value: 'refurbished' }, 'Mid-Range (Refurbished)'),
-                      h('option', { value: 'budget' }, 'Budget (DIY / Legacy)')
-                    )
+                    h('div', { className: 'text-gray-500' }, 'Hardware Cost'),
+                    h('div', { className: 'font-bold' }, '$' + totalHardwareCost.toLocaleString())
                   ),
                   h('div', {},
-                    h('label', { className: 'block text-sm font-medium mb-2' }, 'Storage Capacity (PiB)'),
-                    h('input', {
-                      type: 'number',
-                      value: storageCapacity,
-                      onChange: (e) => setStorageCapacity(Number(e.target.value)),
-                      className: 'w-full p-2 border rounded',
-                      min: 1,
-                      max: 100
-                    })
+                    h('div', { className: 'text-gray-500' }, 'Down Payment'),
+                    h('div', { className: 'font-bold' }, '$' + Math.round(totalHardwareCost * downPayment).toLocaleString() + ' (' + downPaymentPct + '%)')
                   ),
                   h('div', {},
-                    h('label', { className: 'block text-sm font-medium mb-2' }, 'Power Cost (CAD/kWh)'),
-                    h('input', {
-                      type: 'number',
-                      value: powerCost,
-                      onChange: (e) => setPowerCost(Number(e.target.value)),
-                      className: 'w-full p-2 border rounded',
-                      step: 0.001,
-                      min: 0.03,
-                      max: 0.15
-                    })
+                    h('div', { className: 'text-gray-500' }, 'Financed'),
+                    h('div', { className: 'font-bold' }, '$' + Math.round(loanAmount).toLocaleString() + ' @ ' + interestRatePct + '%')
                   ),
                   h('div', {},
-                    h('label', { className: 'block text-sm font-medium mb-2' }, 'Datacap Multiplier'),
-                    h('input', {
-                      type: 'number',
-                      value: datacapMultiplier,
-                      onChange: (e) => setDatacapMultiplier(Number(e.target.value)),
-                      className: 'w-full p-2 border rounded',
-                      min: 1,
-                      max: 100
-                    })
-                  )
-                ),
-                // Filecoin Network Parameters
-                h('h3', { className: 'text-sm font-semibold text-blue-800 mb-2 mt-4' }, 'Filecoin Network Parameters'),
-                h('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4' },
-                  h('div', {},
-                    h('label', { className: 'block text-sm font-medium mb-2' }, 'Block Reward (FIL/TiB/day)'),
-                    h('input', {
-                      type: 'number',
-                      value: blockReward,
-                      onChange: (e) => setBlockReward(Number(e.target.value)),
-                      className: 'w-full p-2 border rounded',
-                      step: 0.0001,
-                      min: 0,
-                      max: 1
-                    }),
-                    h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Source: filfox.info 24h avg')
-                  ),
-                  h('div', {},
-                    h('label', { className: 'block text-sm font-medium mb-2' }, 'Pledge per Sector (FIL/32GiB)'),
-                    h('input', {
-                      type: 'number',
-                      value: pledgePerSector,
-                      onChange: (e) => setPledgePerSector(Number(e.target.value)),
-                      className: 'w-full p-2 border rounded',
-                      step: 0.01,
-                      min: 0,
-                      max: 5
-                    }),
-                    h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Initial pledge collateral locked')
-                  ),
-                  h('div', {},
-                    h('label', { className: 'block text-sm font-medium mb-2' }, 'Gas Cost (FIL/day)'),
-                    h('input', {
-                      type: 'number',
-                      value: dailyGasCost,
-                      onChange: (e) => setDailyGasCost(Number(e.target.value)),
-                      className: 'w-full p-2 border rounded',
-                      step: 0.5,
-                      min: 0,
-                      max: 50
-                    }),
-                    h('div', { className: 'text-xs text-gray-500 mt-1' }, 'WindowPoSt + sector commits')
-                  ),
-                  h('div', {},
-                    h('label', { className: 'block text-sm font-medium mb-2' }, 'Sector Duration (months)'),
-                    h('input', {
-                      type: 'number',
-                      value: sectorDuration,
-                      onChange: (e) => setSectorDuration(Number(e.target.value)),
-                      className: 'w-full p-2 border rounded',
-                      step: 1,
-                      min: 6,
-                      max: 60
-                    }),
-                    h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Pledge lock-up period')
-                  )
-                ),
-                // Hardware description
-                h('div', { className: 'mt-4 p-3 bg-white rounded border border-blue-200' },
-                  h('div', { className: 'font-bold text-sm text-blue-900' }, hardware.name),
-                  h('div', { className: 'text-sm text-gray-600 mt-1' }, hardware.description),
-                  h('div', { className: 'grid grid-cols-2 md:grid-cols-6 gap-2 mt-2 text-xs' },
-                    h('div', {}, '💾 ' + hardware.storagePerServer + ' PiB/server'),
-                    h('div', {}, '💰 $' + hardware.costPerServer.toLocaleString() + '/server'),
-                    h('div', {}, '⚡ ' + hardware.powerPerServer + ' kW/server'),
-                    h('div', {}, '🔧 $' + hardware.maintenancePerServer + '/mo maint.'),
-                    h('div', {}, '📦 ' + serversNeeded + ' servers needed'),
-                    h('div', {}, '♻️ ' + Math.round(hardware.residualPct * 100) + '% residual @ ' + hardware.usefulLifeMonths + ' mo')
+                    h('div', { className: 'text-gray-500' }, 'Monthly Payment'),
+                    h('div', { className: 'font-bold text-blue-700' }, '$' + Math.round(monthlyPayment).toLocaleString() + '/mo x ' + loanTermMonths + ' mo')
                   )
                 )
-              ) : null,
+              )
+            ) : null,
 
-              // Financial tab
-              configTab === 'financial' ? h('div', {},
-                h('h3', { className: 'text-sm font-semibold text-blue-800 mb-2' }, 'Financing'),
-                h('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' },
-                  h('div', {},
-                    h('label', { className: 'block text-sm font-medium mb-2' }, 'Down Payment (%)'),
-                    h('input', {
-                      type: 'number',
-                      value: downPaymentPct,
-                      onChange: (e) => setDownPaymentPct(Number(e.target.value)),
-                      className: 'w-full p-2 border rounded',
-                      step: 5,
-                      min: 0,
-                      max: 100
-                    }),
-                    h('div', { className: 'text-xs text-gray-500 mt-1' },
-                      'Upfront: $' + Math.round(totalHardwareCost * downPayment).toLocaleString() + ' CAD'
-                    )
-                  ),
-                  h('div', {},
-                    h('label', { className: 'block text-sm font-medium mb-2' }, 'Interest Rate (% APR)'),
-                    h('input', {
-                      type: 'number',
-                      value: interestRatePct,
-                      onChange: (e) => setInterestRatePct(Number(e.target.value)),
-                      className: 'w-full p-2 border rounded',
-                      step: 0.5,
-                      min: 0,
-                      max: 25
-                    }),
-                    h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Annual percentage rate on loan')
-                  ),
-                  h('div', {},
-                    h('label', { className: 'block text-sm font-medium mb-2' }, 'Loan Term (months)'),
-                    h('input', {
-                      type: 'number',
-                      value: loanTermMonths,
-                      onChange: (e) => setLoanTermMonths(Number(e.target.value)),
-                      className: 'w-full p-2 border rounded',
-                      step: 6,
-                      min: 6,
-                      max: 84
-                    }),
-                    h('div', { className: 'text-xs text-gray-500 mt-1' },
-                      'Payment: $' + Math.round(monthlyPayment).toLocaleString() + '/mo'
-                    )
-                  )
-                ),
-                h('h3', { className: 'text-sm font-semibold text-blue-800 mb-2 mt-4' }, 'Projection & Currency'),
-                h('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' },
-                  h('div', {},
-                    h('label', { className: 'block text-sm font-medium mb-2' }, 'Projection Period (months)'),
-                    h('input', {
-                      type: 'number',
-                      value: projectionMonths,
-                      onChange: (e) => setProjectionMonths(Number(e.target.value)),
-                      className: 'w-full p-2 border rounded',
-                      step: 6,
-                      min: 12,
-                      max: 120
-                    }),
-                    h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Cash flow analysis window')
-                  ),
-                  h('div', {},
-                    h('label', { className: 'block text-sm font-medium mb-2' }, 'USD/CAD Exchange Rate'),
-                    h('input', {
-                      type: 'number',
-                      value: exchangeRate,
-                      onChange: (e) => setExchangeRate(Number(e.target.value)),
-                      className: 'w-full p-2 border rounded',
-                      step: 0.01,
-                      min: 1.0,
-                      max: 2.0
-                    }),
-                    h('div', { className: 'text-xs text-gray-500 mt-1' }, '1 USD = ' + exchangeRate + ' CAD')
-                  )
-                ),
-                h('h3', { className: 'text-sm font-semibold text-blue-800 mb-2 mt-4' }, 'Exit Strategy'),
-                h('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' },
-                  h('div', {},
-                    h('label', { className: 'block text-sm font-medium mb-2' }, 'Exit at Month'),
-                    h('input', {
-                      type: 'number',
-                      value: exitMonth,
-                      onChange: (e) => setExitMonth(Number(e.target.value)),
-                      className: 'w-full p-2 border rounded',
-                      step: 6,
-                      min: 1,
-                      max: 120
-                    }),
-                    h('div', { className: 'text-xs text-gray-500 mt-1' },
-                      'Year ' + (exitMonth / 12).toFixed(1) + ' — ' + hardware.label + ' residual: ' + Math.round(hwDepreciationPct * 100) + '%'
-                    )
-                  ),
-                  h('div', { className: 'p-3 bg-white rounded border col-span-1 md:col-span-2' },
-                    h('div', { className: 'text-xs text-gray-500 mb-1' }, 'Hardware depreciation: ' + hardware.label),
-                    h('div', { className: 'w-full bg-gray-200 rounded-full h-3 mb-1' },
-                      h('div', {
-                        className: 'h-3 rounded-full transition-all ' +
-                          (hwDepreciationPct > 0.25 ? 'bg-green-500' : hwDepreciationPct > 0 ? 'bg-yellow-500' : 'bg-red-500'),
-                        style: { width: Math.round(hwDepreciationPct * 100) + '%' }
-                      })
-                    ),
-                    h('div', { className: 'flex justify-between text-xs text-gray-500' },
-                      h('span', {}, 'Useful life: ' + hardware.usefulLifeMonths + ' mo'),
-                      h('span', {}, 'Floor: ' + Math.round(residualFloor * 100) + '% — ' + hardware.residualNote)
-                    )
-                  )
-                ),
-                // Financial summary card
-                h('div', { className: 'mt-4 p-3 bg-white rounded border border-blue-200' },
-                  h('div', { className: 'font-bold text-sm text-blue-900 mb-2' }, 'Financing Summary'),
-                  h('div', { className: 'grid grid-cols-2 md:grid-cols-4 gap-3 text-xs' },
-                    h('div', {},
-                      h('div', { className: 'text-gray-500' }, 'Hardware Cost'),
-                      h('div', { className: 'font-bold' }, '$' + totalHardwareCost.toLocaleString())
-                    ),
-                    h('div', {},
-                      h('div', { className: 'text-gray-500' }, 'Down Payment'),
-                      h('div', { className: 'font-bold' }, '$' + Math.round(totalHardwareCost * downPayment).toLocaleString() + ' (' + downPaymentPct + '%)')
-                    ),
-                    h('div', {},
-                      h('div', { className: 'text-gray-500' }, 'Financed'),
-                      h('div', { className: 'font-bold' }, '$' + Math.round(loanAmount).toLocaleString() + ' @ ' + interestRatePct + '%')
-                    ),
-                    h('div', {},
-                      h('div', { className: 'text-gray-500' }, 'Monthly Payment'),
-                      h('div', { className: 'font-bold text-blue-700' }, '$' + Math.round(monthlyPayment).toLocaleString() + '/mo × ' + loanTermMonths + ' mo')
-                    )
-                  )
-                )
-              ) : null
-            ),
-
-            // ═══════════════════════════════════════════════════════════
-            // FIP SIMULATION PANEL
-            // ═══════════════════════════════════════════════════════════
-            simOpen ? h('div', { className: 'bg-amber-50 border-2 border-amber-300 p-6 rounded-lg mb-6' },
+            // ═══════════════════════════════════════
+            // FIP SIMULATION VIEW
+            // ═══════════════════════════════════════
+            activeView === 'fip' ? h('div', { className: 'bg-amber-50 border-2 border-amber-300 p-6 rounded-lg mb-6' },
               h('div', { className: 'flex items-center justify-between mb-4' },
                 h('div', {},
                   h('h2', { className: 'text-xl font-bold text-amber-900' }, 'FIP Simulation Lab'),
-                  h('p', { className: 'text-sm text-amber-700 mt-1' },
-                    'Select a Filecoin Improvement Proposal to simulate its impact on your business model. Add new FIPs as they come in.'
-                  )
+                  h('p', { className: 'text-sm text-amber-700 mt-1' }, 'Select a FIP to simulate its impact on your business model.')
                 ),
                 activeFip ? h('button', {
-                  onClick: () => setActiveFip(null),
+                  onClick: function() { setActiveFip(null); },
                   className: 'px-3 py-1 text-xs bg-gray-200 rounded hover:bg-gray-300'
                 }, 'Clear Simulation') : null
               ),
-
-              // ── FIP Registry (the persistent list) ──
+              // FIP Registry
               h('div', { className: 'mb-4' },
                 h('div', { className: 'flex items-center justify-between mb-2' },
                   h('h3', { className: 'text-sm font-bold text-amber-800' }, 'FIP Registry (' + fipList.length + ' proposals)'),
                   h('button', {
-                    onClick: () => setShowAddFip(!showAddFip),
+                    onClick: function() { setShowAddFip(!showAddFip); },
                     className: 'px-3 py-1 text-xs font-medium rounded transition-colors ' +
                       (showAddFip ? 'bg-amber-600 text-white' : 'bg-white text-amber-700 border border-amber-300 hover:bg-amber-100')
                   }, showAddFip ? 'Cancel' : '+ Add FIP')
                 ),
-
-                // ── Add FIP form ──
+                // Add FIP form
                 showAddFip ? h('div', { className: 'bg-white border border-amber-200 rounded-lg p-4 mb-3' },
                   h('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-3 mb-3' },
                     h('div', {},
                       h('label', { className: 'block text-xs font-medium mb-1' }, 'FIP ID'),
-                      h('input', {
-                        type: 'text', value: newFipId, placeholder: 'e.g. FIP-0099',
-                        onChange: (e) => setNewFipId(e.target.value),
-                        className: 'w-full p-2 border rounded text-sm'
-                      })
+                      h('input', { type: 'text', value: newFipId, placeholder: 'e.g. FIP-0099', onChange: function(e) { setNewFipId(e.target.value); }, className: 'w-full p-2 border rounded text-sm' })
                     ),
                     h('div', {},
                       h('label', { className: 'block text-xs font-medium mb-1' }, 'Title'),
-                      h('input', {
-                        type: 'text', value: newFipTitle, placeholder: 'Short descriptive title',
-                        onChange: (e) => setNewFipTitle(e.target.value),
-                        className: 'w-full p-2 border rounded text-sm'
-                      })
+                      h('input', { type: 'text', value: newFipTitle, placeholder: 'Short descriptive title', onChange: function(e) { setNewFipTitle(e.target.value); }, className: 'w-full p-2 border rounded text-sm' })
                     )
                   ),
                   h('div', { className: 'mb-3' },
                     h('label', { className: 'block text-xs font-medium mb-1' }, 'Summary'),
-                    h('input', {
-                      type: 'text', value: newFipSummary, placeholder: 'What does this FIP change?',
-                      onChange: (e) => setNewFipSummary(e.target.value),
-                      className: 'w-full p-2 border rounded text-sm'
-                    })
+                    h('input', { type: 'text', value: newFipSummary, placeholder: 'What does this FIP change?', onChange: function(e) { setNewFipSummary(e.target.value); }, className: 'w-full p-2 border rounded text-sm' })
                   ),
                   h('div', { className: 'mb-3' },
                     h('label', { className: 'block text-xs font-medium mb-1' }, 'Link (optional)'),
-                    h('input', {
-                      type: 'text', value: newFipLink, placeholder: 'https://github.com/filecoin-project/FIPs/...',
-                      onChange: (e) => setNewFipLink(e.target.value),
-                      className: 'w-full p-2 border rounded text-sm'
-                    })
+                    h('input', { type: 'text', value: newFipLink, placeholder: 'https://github.com/filecoin-project/FIPs/...', onChange: function(e) { setNewFipLink(e.target.value); }, className: 'w-full p-2 border rounded text-sm' })
                   ),
                   h('div', { className: 'mb-3' },
                     h('label', { className: 'block text-xs font-medium mb-1' }, 'Parameter Overrides (JSON)'),
-                    h('input', {
-                      type: 'text', value: newFipOverrides,
-                      placeholder: '{"blockReward": 0.005, "datacapMultiplier": 5, "dailyGasCost": 2}',
-                      onChange: (e) => setNewFipOverrides(e.target.value),
-                      className: 'w-full p-2 border rounded text-sm font-mono'
-                    }),
-                    h('div', { className: 'text-xs text-gray-500 mt-1' },
-                      'Keys: blockReward, datacapMultiplier, dailyGasCost, pledgePerSector, sectorDuration'
-                    )
+                    h('input', { type: 'text', value: newFipOverrides, placeholder: '{"blockReward": 0.005, "datacapMultiplier": 5}', onChange: function(e) { setNewFipOverrides(e.target.value); }, className: 'w-full p-2 border rounded text-sm font-mono' }),
+                    h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Keys: blockReward, datacapMultiplier, dailyGasCost, pledgePerSector, sectorDuration')
                   ),
                   h('button', {
-                    onClick: () => {
+                    onClick: function() {
                       if (!newFipId || !newFipTitle) return;
                       var overrides = {};
-                      try { overrides = newFipOverrides ? JSON.parse(newFipOverrides) : {}; } catch(e) { alert('Invalid JSON in overrides'); return; }
-                      setFipList([...fipList, {
-                        id: newFipId, title: newFipTitle, status: 'custom',
-                        summary: newFipSummary, link: newFipLink, overrides: overrides
-                      }]);
+                      try { overrides = newFipOverrides ? JSON.parse(newFipOverrides) : {}; } catch(e) { alert('Invalid JSON'); return; }
+                      setFipList([].concat(fipList, [{ id: newFipId, title: newFipTitle, status: 'custom', summary: newFipSummary, link: newFipLink, overrides: overrides }]));
                       setNewFipId(''); setNewFipTitle(''); setNewFipSummary(''); setNewFipLink(''); setNewFipOverrides('');
                       setShowAddFip(false);
                     },
                     className: 'px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded hover:bg-amber-700'
                   }, 'Save to Registry')
                 ) : null,
-
-                // ── FIP list cards ──
+                // FIP list cards
                 h('div', { className: 'space-y-2 max-h-80 overflow-y-auto' },
                   fipList.filter(function(f) { return f.status !== 'template'; }).map(function(fip) {
                     var isActive = activeFip === fip.id;
@@ -754,46 +754,33 @@
                     return h('div', {
                       key: fip.id,
                       className: 'flex items-start justify-between p-3 rounded-lg border transition-all cursor-pointer ' +
-                        (isActive
-                          ? 'bg-amber-200 border-amber-400 shadow-md'
-                          : 'bg-white border-gray-200 hover:border-amber-300 hover:bg-amber-50')
+                        (isActive ? 'bg-amber-200 border-amber-400 shadow-md' : 'bg-white border-gray-200 hover:border-amber-300 hover:bg-amber-50')
                     },
-                      h('div', { className: 'flex-1 min-w-0', onClick: () => hasOverrides ? setActiveFip(isActive ? null : fip.id) : null },
+                      h('div', { className: 'flex-1 min-w-0', onClick: function() { if (hasOverrides) setActiveFip(isActive ? null : fip.id); } },
                         h('div', { className: 'flex items-center gap-2 flex-wrap' },
                           h('span', { className: 'text-xs font-mono font-bold px-2 py-0.5 rounded ' +
-                            (fip.status === 'active' ? 'bg-green-100 text-green-800' :
-                             fip.status === 'draft' ? 'bg-blue-100 text-blue-800' :
-                             'bg-gray-100 text-gray-800')
+                            (fip.status === 'active' ? 'bg-green-100 text-green-800' : fip.status === 'draft' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800')
                           }, fip.id),
                           h('span', { className: 'text-xs px-2 py-0.5 rounded-full ' +
-                            (fip.status === 'active' ? 'bg-green-50 text-green-700' :
-                             fip.status === 'draft' ? 'bg-blue-50 text-blue-700' :
-                             'bg-gray-50 text-gray-600')
+                            (fip.status === 'active' ? 'bg-green-50 text-green-700' : fip.status === 'draft' ? 'bg-blue-50 text-blue-700' : 'bg-gray-50 text-gray-600')
                           }, fip.status)
                         ),
                         h('div', { className: 'text-sm font-medium mt-1' }, fip.title),
                         h('div', { className: 'text-xs text-gray-500 mt-0.5 truncate' }, fip.summary),
                         hasOverrides ? h('div', { className: 'flex gap-1 mt-1 flex-wrap' },
                           Object.keys(fip.overrides).map(function(key) {
-                            return h('span', {
-                              key: key,
-                              className: 'text-xs font-mono bg-gray-100 px-1.5 py-0.5 rounded'
-                            }, key + ': ' + fip.overrides[key])
+                            return h('span', { key: key, className: 'text-xs font-mono bg-gray-100 px-1.5 py-0.5 rounded' }, key + ': ' + fip.overrides[key]);
                           })
                         ) : h('div', { className: 'text-xs text-amber-600 mt-1 italic' }, 'No parameter overrides yet')
                       ),
                       h('div', { className: 'flex items-center gap-1 ml-2 flex-shrink-0' },
                         hasOverrides ? h('button', {
-                          onClick: (e) => { e.stopPropagation(); setActiveFip(isActive ? null : fip.id); },
+                          onClick: function(e) { e.stopPropagation(); setActiveFip(isActive ? null : fip.id); },
                           className: 'px-3 py-1 text-xs font-medium rounded transition-colors ' +
                             (isActive ? 'bg-amber-600 text-white' : 'bg-amber-100 text-amber-800 hover:bg-amber-200')
                         }, isActive ? 'Running' : 'Simulate') : null,
                         fip.status === 'custom' ? h('button', {
-                          onClick: (e) => {
-                            e.stopPropagation();
-                            if (activeFip === fip.id) setActiveFip(null);
-                            setFipList(fipList.filter(function(f) { return f.id !== fip.id; }));
-                          },
+                          onClick: function(e) { e.stopPropagation(); if (activeFip === fip.id) setActiveFip(null); setFipList(fipList.filter(function(f) { return f.id !== fip.id; })); },
                           className: 'px-2 py-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded'
                         }, 'x') : null
                       )
@@ -801,147 +788,198 @@
                   })
                 )
               ),
-
-              // ── Simulation Impact Summary (only when a FIP is active) ──
+              // Simulation Impact Summary
               simActive ? h('div', { className: 'mt-4 border-t-2 border-amber-300 pt-4' },
-                h('h3', { className: 'text-sm font-bold text-amber-900 mb-3' },
-                  'Simulation Impact: ' + (fipList.find(function(f) { return f.id === activeFip; }) || {}).title
-                ),
+                h('h3', { className: 'text-sm font-bold text-amber-900 mb-3' }, 'Simulation Impact: ' + (fipList.find(function(f) { return f.id === activeFip; }) || {}).title),
                 h('div', { className: 'grid grid-cols-2 md:grid-cols-4 gap-3' },
-                  // Monthly Revenue delta
                   h('div', { className: 'bg-white p-3 rounded-lg border' },
                     h('div', { className: 'text-xs text-gray-500' }, 'Monthly Revenue'),
                     h('div', { className: 'text-lg font-bold' }, '$' + Math.round(sim.monthlyRevenue).toLocaleString()),
-                    fmtDelta(sim.monthlyRevenue, monthlyRevenue)
-                      ? h('div', { className: 'text-sm font-bold ' + (sim.monthlyRevenue >= monthlyRevenue ? 'text-green-600' : 'text-red-600') },
-                          fmtDelta(sim.monthlyRevenue, monthlyRevenue)
-                        )
-                      : h('div', { className: 'text-xs text-gray-400' }, 'No change')
+                    fmtDelta(sim.monthlyRevenue, monthlyRevenue) ? h('div', { className: 'text-sm font-bold ' + (sim.monthlyRevenue >= monthlyRevenue ? 'text-green-600' : 'text-red-600') }, fmtDelta(sim.monthlyRevenue, monthlyRevenue)) : h('div', { className: 'text-xs text-gray-400' }, 'No change')
                   ),
-                  // Monthly OPEX delta
                   h('div', { className: 'bg-white p-3 rounded-lg border' },
                     h('div', { className: 'text-xs text-gray-500' }, 'Monthly OPEX'),
                     h('div', { className: 'text-lg font-bold' }, '$' + Math.round(sim.totalMonthlyOpex).toLocaleString()),
-                    fmtDelta(sim.totalMonthlyOpex, totalMonthlyOpex)
-                      ? h('div', { className: 'text-sm font-bold ' + (sim.totalMonthlyOpex <= totalMonthlyOpex ? 'text-green-600' : 'text-red-600') },
-                          fmtDelta(sim.totalMonthlyOpex, totalMonthlyOpex)
-                        )
-                      : h('div', { className: 'text-xs text-gray-400' }, 'No change')
+                    fmtDelta(sim.totalMonthlyOpex, totalMonthlyOpex) ? h('div', { className: 'text-sm font-bold ' + (sim.totalMonthlyOpex <= totalMonthlyOpex ? 'text-green-600' : 'text-red-600') }, fmtDelta(sim.totalMonthlyOpex, totalMonthlyOpex)) : h('div', { className: 'text-xs text-gray-400' }, 'No change')
                   ),
-                  // Net Profit delta
                   h('div', { className: 'bg-white p-3 rounded-lg border' },
                     h('div', { className: 'text-xs text-gray-500' }, 'Net Monthly Profit'),
-                    h('div', { className: 'text-lg font-bold ' + (sim.netProfit >= 0 ? 'text-green-700' : 'text-red-600') },
-                      '$' + Math.round(sim.netProfit).toLocaleString()
-                    ),
-                    fmtDelta(sim.netProfit, monthlyRevenue - totalMonthlyOpex - monthlyPayment)
-                      ? h('div', { className: 'text-sm font-bold ' +
-                          (sim.netProfit >= (monthlyRevenue - totalMonthlyOpex - monthlyPayment) ? 'text-green-600' : 'text-red-600') },
-                          fmtDelta(sim.netProfit, monthlyRevenue - totalMonthlyOpex - monthlyPayment)
-                        )
-                      : h('div', { className: 'text-xs text-gray-400' }, 'No change')
+                    h('div', { className: 'text-lg font-bold ' + (sim.netProfit >= 0 ? 'text-green-700' : 'text-red-600') }, '$' + Math.round(sim.netProfit).toLocaleString()),
+                    (function() { var d = fmtDelta(sim.netProfit, monthlyRevenue - totalMonthlyOpex - monthlyPayment); return d ? h('div', { className: 'text-sm font-bold ' + (sim.netProfit >= (monthlyRevenue - totalMonthlyOpex - monthlyPayment) ? 'text-green-600' : 'text-red-600') }, d) : h('div', { className: 'text-xs text-gray-400' }, 'No change'); })()
                   ),
-                  // Break-Even delta
                   h('div', { className: 'bg-white p-3 rounded-lg border' },
                     h('div', { className: 'text-xs text-gray-500' }, 'Break-Even'),
-                    h('div', { className: 'text-lg font-bold' },
-                      sim.breakEvenMonth ? sim.breakEvenMonth + ' mo' : '>' + projectionMonths + ' mo'
-                    ),
+                    h('div', { className: 'text-lg font-bold' }, sim.breakEvenMonth ? sim.breakEvenMonth + ' mo' : '>' + projectionMonths + ' mo'),
                     (function() {
                       if (!breakEvenMonth && !sim.breakEvenMonth) return h('div', { className: 'text-xs text-gray-400' }, 'Still beyond window');
                       if (!breakEvenMonth && sim.breakEvenMonth) return h('div', { className: 'text-sm font-bold text-green-600' }, 'Now reachable!');
                       if (breakEvenMonth && !sim.breakEvenMonth) return h('div', { className: 'text-sm font-bold text-red-600' }, 'No longer reachable');
                       var d = sim.breakEvenMonth - breakEvenMonth;
                       if (d === 0) return h('div', { className: 'text-xs text-gray-400' }, 'No change');
-                      return h('div', { className: 'text-sm font-bold ' + (d < 0 ? 'text-green-600' : 'text-red-600') },
-                        (d > 0 ? '+' : '') + d + ' months'
-                      );
+                      return h('div', { className: 'text-sm font-bold ' + (d < 0 ? 'text-green-600' : 'text-red-600') }, (d > 0 ? '+' : '') + d + ' months');
                     })()
                   )
                 ),
-                // Annual ROI comparison
                 h('div', { className: 'grid grid-cols-2 md:grid-cols-4 gap-3 mt-3' },
                   h('div', { className: 'bg-white p-3 rounded-lg border' },
                     h('div', { className: 'text-xs text-gray-500' }, 'Annual ROI'),
                     h('div', { className: 'text-lg font-bold' }, sim.roi.toFixed(1) + '%'),
-                    (function() {
-                      var d = sim.roi - roi;
-                      if (Math.abs(d) < 0.1) return h('div', { className: 'text-xs text-gray-400' }, 'No change');
-                      return h('div', { className: 'text-sm font-bold ' + (d > 0 ? 'text-green-600' : 'text-red-600') },
-                        (d > 0 ? '+' : '') + d.toFixed(1) + ' pp'
-                      );
-                    })()
+                    (function() { var d = sim.roi - roi; if (Math.abs(d) < 0.1) return h('div', { className: 'text-xs text-gray-400' }, 'No change'); return h('div', { className: 'text-sm font-bold ' + (d > 0 ? 'text-green-600' : 'text-red-600') }, (d > 0 ? '+' : '') + d.toFixed(1) + ' pp'); })()
                   ),
                   h('div', { className: 'bg-white p-3 rounded-lg border' },
                     h('div', { className: 'text-xs text-gray-500' }, 'Pledge Collateral'),
                     h('div', { className: 'text-lg font-bold' }, '$' + Math.round(sim.totalPledgeCad).toLocaleString()),
-                    fmtDelta(sim.totalPledgeCad, totalPledgeCad)
-                      ? h('div', { className: 'text-sm font-bold ' + (sim.totalPledgeCad <= totalPledgeCad ? 'text-green-600' : 'text-red-600') },
-                          fmtDelta(sim.totalPledgeCad, totalPledgeCad)
-                        )
-                      : h('div', { className: 'text-xs text-gray-400' }, 'No change')
+                    fmtDelta(sim.totalPledgeCad, totalPledgeCad) ? h('div', { className: 'text-sm font-bold ' + (sim.totalPledgeCad <= totalPledgeCad ? 'text-green-600' : 'text-red-600') }, fmtDelta(sim.totalPledgeCad, totalPledgeCad)) : h('div', { className: 'text-xs text-gray-400' }, 'No change')
                   ),
                   h('div', { className: 'bg-white p-3 rounded-lg border col-span-2' },
                     h('div', { className: 'text-xs text-gray-500 mb-1' }, 'Parameter Changes Applied'),
                     h('div', { className: 'flex gap-2 flex-wrap' },
                       Object.keys(simOverrides).map(function(key) {
-                        var baseVal = key === 'blockReward' ? blockReward :
-                                      key === 'datacapMultiplier' ? datacapMultiplier :
-                                      key === 'dailyGasCost' ? dailyGasCost :
-                                      key === 'pledgePerSector' ? pledgePerSector :
-                                      key === 'sectorDuration' ? sectorDuration : '?';
-                        return h('span', {
-                          key: key,
-                          className: 'text-xs font-mono px-2 py-1 rounded bg-amber-100 text-amber-800'
-                        }, key + ': ' + baseVal + ' -> ' + simOverrides[key]);
+                        var baseVal = key === 'blockReward' ? blockReward : key === 'datacapMultiplier' ? datacapMultiplier : key === 'dailyGasCost' ? dailyGasCost : key === 'pledgePerSector' ? pledgePerSector : key === 'sectorDuration' ? sectorDuration : '?';
+                        return h('span', { key: key, className: 'text-xs font-mono px-2 py-1 rounded bg-amber-100 text-amber-800' }, key + ': ' + baseVal + ' -> ' + simOverrides[key]);
                       })
                     )
                   )
                 )
               ) : null
-
             ) : null,
 
-            // ── Active simulation banner (shows above dashboard when sim panel is closed but FIP is active) ──
-            !simOpen && simActive ? h('div', {
-              className: 'bg-amber-100 border border-amber-300 p-3 rounded-lg mb-6 flex items-center justify-between'
-            },
-              h('div', { className: 'flex items-center gap-2' },
-                h('span', { className: 'text-amber-700 font-bold text-sm' }, 'Simulation Active:'),
-                h('span', { className: 'text-sm' },
-                  (fipList.find(function(f) { return f.id === activeFip; }) || {}).title
+            // ═══════════════════════════════════════
+            // GEOGRAPHY DASHBOARD
+            // ═══════════════════════════════════════
+            activeView === 'geography' ? h('div', { className: 'bg-emerald-50 border-2 border-emerald-300 p-6 rounded-lg mb-6' },
+              h('h2', { className: 'text-xl font-bold text-emerald-900 mb-2' }, 'Geography Cost Comparison'),
+              h('p', { className: 'text-sm text-emerald-700 mb-4' }, 'Compare SP operating costs across regions. Select a geography to see its cost profile and how it compares to your current Quebec baseline.'),
+
+              // Country selector
+              h('div', { className: 'flex flex-wrap gap-2 mb-6' },
+                geoKeys.map(function(key) {
+                  var p = geoProfiles[key];
+                  var isSelected = selectedGeo === key;
+                  return h('button', {
+                    key: key,
+                    onClick: function() { setSelectedGeo(key); },
+                    className: 'px-3 py-2 text-xs font-medium rounded-lg transition-all ' +
+                      (isSelected ? 'bg-emerald-600 text-white shadow-md' : 'bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-50')
+                  }, p.name);
+                })
+              ),
+
+              // Selected geo detail card
+              h('div', { className: 'bg-white rounded-lg border border-emerald-200 p-5 mb-6' },
+                h('div', { className: 'flex items-center justify-between mb-3' },
+                  h('h3', { className: 'text-lg font-bold text-emerald-900' }, geo.name),
+                  h('span', { className: 'text-xs bg-emerald-100 text-emerald-800 px-2 py-1 rounded' }, 'Corp Tax: ' + geo.corpTaxPct + '%')
+                ),
+                h('p', { className: 'text-sm text-gray-600 mb-4' }, geo.notes),
+                h('div', { className: 'grid grid-cols-2 md:grid-cols-4 gap-4 mb-4' },
+                  h('div', { className: 'bg-emerald-50 p-3 rounded' },
+                    h('div', { className: 'text-xs text-gray-500' }, 'Industrial Power'),
+                    h('div', { className: 'text-lg font-bold' }, '$' + geo.powerCostUsd.toFixed(3) + '/kWh'),
+                    h('div', { className: 'text-xs text-gray-400' }, 'USD, industrial rate')
+                  ),
+                  h('div', { className: 'bg-emerald-50 p-3 rounded' },
+                    h('div', { className: 'text-xs text-gray-500' }, 'Bandwidth'),
+                    h('div', { className: 'text-lg font-bold' }, '$' + geo.bandwidthMo + '/mo'),
+                    h('div', { className: 'text-xs text-gray-400' }, '10 Gbps unmetered')
+                  ),
+                  h('div', { className: 'bg-emerald-50 p-3 rounded' },
+                    h('div', { className: 'text-xs text-gray-500' }, 'Colocation'),
+                    h('div', { className: 'text-lg font-bold' }, '$' + geo.coloPerKwMo + '/kW/mo'),
+                    h('div', { className: 'text-xs text-gray-400' }, 'Per-kW rack pricing')
+                  ),
+                  h('div', { className: 'bg-emerald-50 p-3 rounded' },
+                    h('div', { className: 'text-xs text-gray-500' }, 'SP Engineer Salary'),
+                    h('div', { className: 'text-lg font-bold' }, '$' + (geo.laborAnnual / 1000).toFixed(0) + 'K/yr'),
+                    h('div', { className: 'text-xs text-gray-400' }, 'USD, annual')
+                  )
+                ),
+                h('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-3 text-sm' },
+                  h('div', { className: 'bg-green-50 p-3 rounded' },
+                    h('div', { className: 'font-bold text-green-800 text-xs mb-1' }, 'Strengths'),
+                    h('div', { className: 'text-green-700' }, geo.strengths)
+                  ),
+                  h('div', { className: 'bg-red-50 p-3 rounded' },
+                    h('div', { className: 'font-bold text-red-800 text-xs mb-1' }, 'Weaknesses'),
+                    h('div', { className: 'text-red-700' }, geo.weaknesses)
+                  )
                 )
               ),
-              h('div', { className: 'flex gap-2' },
+
+              // Comparison table: all geographies
+              h('div', { className: 'bg-white rounded-lg border border-emerald-200 p-4 overflow-x-auto' },
+                h('h3', { className: 'text-sm font-bold text-emerald-900 mb-3' }, 'Monthly OPEX Comparison (' + storageCapacity + ' PiB, ' + hardware.label + ' hardware)'),
+                h('table', { className: 'w-full text-xs' },
+                  h('thead', {},
+                    h('tr', { className: 'border-b' },
+                      h('th', { className: 'text-left py-2 pr-2' }, 'Region'),
+                      h('th', { className: 'text-right py-2 px-2' }, 'Power/mo'),
+                      h('th', { className: 'text-right py-2 px-2' }, 'Bandwidth'),
+                      h('th', { className: 'text-right py-2 px-2' }, 'Colo'),
+                      h('th', { className: 'text-right py-2 px-2' }, 'Labor'),
+                      h('th', { className: 'text-right py-2 px-2 font-bold' }, 'Total OPEX'),
+                      h('th', { className: 'text-right py-2 px-2' }, 'vs Quebec')
+                    )
+                  ),
+                  h('tbody', {},
+                    geoKeys.map(function(key) {
+                      var p = geoProfiles[key];
+                      var pwr = totalPowerKw * 24 * 30 * p.powerCostUsd * exchangeRate;
+                      var bw = p.bandwidthMo * exchangeRate;
+                      var colo = rackSpaceNeeded * p.coloPerKwMo * exchangeRate;
+                      var labor = (p.laborAnnual / 12) * exchangeRate;
+                      var total = geoMonthlyOpex(p);
+                      var baseline = geoMonthlyOpex(geoProfiles['canada-qc']);
+                      var diff = total - baseline;
+                      var isSelected = selectedGeo === key;
+                      return h('tr', {
+                        key: key,
+                        className: 'border-b cursor-pointer transition-colors ' +
+                          (isSelected ? 'bg-emerald-100 font-bold' : 'hover:bg-emerald-50'),
+                        onClick: function() { setSelectedGeo(key); }
+                      },
+                        h('td', { className: 'py-2 pr-2' }, p.name),
+                        h('td', { className: 'text-right px-2' }, '$' + Math.round(pwr).toLocaleString()),
+                        h('td', { className: 'text-right px-2' }, '$' + Math.round(bw).toLocaleString()),
+                        h('td', { className: 'text-right px-2' }, '$' + Math.round(colo).toLocaleString()),
+                        h('td', { className: 'text-right px-2' }, '$' + Math.round(labor).toLocaleString()),
+                        h('td', { className: 'text-right px-2 font-bold' }, '$' + Math.round(total).toLocaleString()),
+                        h('td', { className: 'text-right px-2 font-bold ' + (diff <= 0 ? 'text-green-600' : 'text-red-600') },
+                          key === 'canada-qc' ? '--' : (diff >= 0 ? '+' : '') + '$' + Math.round(diff).toLocaleString()
+                        )
+                      );
+                    })
+                  )
+                )
+              ),
+
+              // Apply geography button
+              selectedGeo !== 'canada-qc' ? h('div', { className: 'mt-4 p-3 bg-emerald-100 rounded-lg flex items-center justify-between' },
+                h('div', { className: 'text-sm text-emerald-800' },
+                  'Apply ' + geo.name + ' costs to model? This will update power cost to $' + (geo.powerCostUsd * exchangeRate).toFixed(3) + ' CAD/kWh.'
+                ),
                 h('button', {
-                  onClick: () => setSimOpen(true),
-                  className: 'px-3 py-1 text-xs bg-amber-200 rounded hover:bg-amber-300'
-                }, 'View Details'),
-                h('button', {
-                  onClick: () => setActiveFip(null),
-                  className: 'px-3 py-1 text-xs bg-gray-200 rounded hover:bg-gray-300'
-                }, 'Clear')
-              )
+                  onClick: function() { setPowerCost(Math.round(geo.powerCostUsd * exchangeRate * 1000) / 1000); },
+                  className: 'px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded hover:bg-emerald-700'
+                }, 'Apply Power Cost')
+              ) : null
             ) : null,
 
+            // ═══════════════════════════════════════
+            // DASHBOARD SECTIONS (collapsible)
+            // ═══════════════════════════════════════
+
             // Executive Summary
-            h('div', { className: 'mb-8' },
-              h('h2', { className: 'text-2xl font-bold mb-4 text-blue-900' }, 'Executive Summary'),
+            h(Section, { title: 'Executive Summary', open: sections.executive, onToggle: function() { toggleSection('executive'); } },
               h('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-4' },
                 h('div', { className: 'bg-green-50 p-4 rounded-lg' },
                   h('div', { className: 'text-sm text-gray-600' }, 'Initial Capital Required'),
-                  h('div', { className: 'text-2xl font-bold text-green-700' },
-                    '$' + Math.round(totalHardwareCost * downPayment + totalPledgeCad).toLocaleString() + ' CAD'
-                  ),
-                  h('div', { className: 'text-xs text-gray-500' },
-                    downPaymentPct + '% down ($' + Math.round(totalHardwareCost * downPayment).toLocaleString() + ') + pledge ($' + Math.round(totalPledgeCad).toLocaleString() + ')'
-                  )
+                  h('div', { className: 'text-2xl font-bold text-green-700' }, '$' + Math.round(totalHardwareCost * downPayment + totalPledgeCad).toLocaleString() + ' CAD'),
+                  h('div', { className: 'text-xs text-gray-500' }, downPaymentPct + '% down ($' + Math.round(totalHardwareCost * downPayment).toLocaleString() + ') + pledge ($' + Math.round(totalPledgeCad).toLocaleString() + ')')
                 ),
                 h('div', { className: 'bg-blue-50 p-4 rounded-lg' },
                   h('div', { className: 'text-sm text-gray-600' }, 'Monthly Revenue (Steady State)'),
-                  h('div', { className: 'text-2xl font-bold text-blue-700' },
-                    '$' + Math.round(monthlyRevenue).toLocaleString() + ' CAD'
-                  ),
+                  h('div', { className: 'text-2xl font-bold text-blue-700' }, '$' + Math.round(monthlyRevenue).toLocaleString() + ' CAD'),
                   h('div', { className: 'text-xs text-gray-500' }, 'With Datacap ' + datacapMultiplier + 'x multiplier')
                 ),
                 h('div', { className: 'bg-orange-50 p-4 rounded-lg' },
@@ -950,127 +988,72 @@
                     breakEvenMonth ? breakEvenMonth + ' months' : '>' + projectionMonths + ' months'
                   ),
                   h('div', { className: 'text-xs text-gray-500' },
-                    breakEvenMonth
-                      ? 'Cumulative cash flow positive'
-                      : 'Not reached within ' + projectionMonths + '-month window — adjust Financial tab'
+                    breakEvenMonth ? 'Cumulative cash flow positive' : 'Not reached within ' + projectionMonths + '-month window'
                   )
                 ),
                 h('div', { className: 'bg-purple-50 p-4 rounded-lg' },
                   h('div', { className: 'text-sm text-gray-600' }, 'Annual ROI (Year 1)'),
-                  h('div', { className: 'text-2xl font-bold text-purple-700' },
-                    roi.toFixed(1) + '%'
-                  ),
+                  h('div', { className: 'text-2xl font-bold text-purple-700' }, roi.toFixed(1) + '%'),
                   h('div', { className: 'text-xs text-gray-500' }, 'Based on hardware investment')
                 )
               )
             ),
 
             // Hardware Comparison
-            h('div', { className: 'mb-8' },
-              h('h2', { className: 'text-2xl font-bold mb-4 text-blue-900' }, 'Hardware Scenario Comparison'),
+            h(Section, { title: 'Hardware Scenario Comparison', open: sections.hardware, onToggle: function() { toggleSection('hardware'); } },
               h('div', { className: 'bg-gray-50 p-4 rounded-lg overflow-x-auto' },
                 h('table', { className: 'w-full text-sm' },
                   h('thead', {},
                     h('tr', { className: 'border-b' },
                       h('th', { className: 'text-left py-2' }, 'Metric'),
                       hardwareKeys.map(function(key) {
-                        return h('th', {
-                          key: key,
-                          className: 'text-right py-2 px-2 ' + (key === hardwareType ? 'bg-blue-100 font-bold' : 'bg-gray-50')
-                        }, hardwareConfigs[key].label + (key === hardwareType ? ' ✓' : ''))
+                        return h('th', { key: key, className: 'text-right py-2 px-2 ' + (key === hardwareType ? 'bg-blue-100 font-bold' : 'bg-gray-50') },
+                          hardwareConfigs[key].label + (key === hardwareType ? ' *' : '')
+                        );
                       })
                     )
                   ),
                   h('tbody', {},
-                    // Storage per server
-                    h('tr', { className: 'border-b' },
-                      h('td', { className: 'py-2' }, 'Storage / Server'),
-                      hardwareKeys.map(function(key) {
-                        return h('td', {
-                          key: key,
-                          className: 'text-right px-2 ' + (key === hardwareType ? 'bg-blue-50 font-bold' : '')
-                        }, hardwareConfigs[key].storagePerServer + ' PiB')
-                      })
-                    ),
-                    // Cost per server
-                    h('tr', { className: 'border-b' },
-                      h('td', { className: 'py-2' }, 'Cost / Server'),
-                      hardwareKeys.map(function(key) {
-                        return h('td', {
-                          key: key,
-                          className: 'text-right px-2 ' + (key === hardwareType ? 'bg-blue-50 font-bold' : '')
-                        }, '$' + hardwareConfigs[key].costPerServer.toLocaleString())
-                      })
-                    ),
-                    // Power per server
-                    h('tr', { className: 'border-b' },
-                      h('td', { className: 'py-2' }, 'Power / Server'),
-                      hardwareKeys.map(function(key) {
-                        return h('td', {
-                          key: key,
-                          className: 'text-right px-2 ' + (key === hardwareType ? 'bg-blue-50 font-bold' : '')
-                        }, hardwareConfigs[key].powerPerServer + ' kW')
-                      })
-                    ),
-                    // Maintenance per server
-                    h('tr', { className: 'border-b' },
-                      h('td', { className: 'py-2' }, 'Maintenance / Server'),
-                      hardwareKeys.map(function(key) {
-                        return h('td', {
-                          key: key,
-                          className: 'text-right px-2 ' + (key === hardwareType ? 'bg-blue-50 font-bold' : '')
-                        }, '$' + hardwareConfigs[key].maintenancePerServer + '/mo')
-                      })
-                    ),
-                    // Useful life & residual
-                    h('tr', { className: 'border-b' },
-                      h('td', { className: 'py-2' }, 'Useful Life'),
-                      hardwareKeys.map(function(key) {
-                        return h('td', {
-                          key: key,
-                          className: 'text-right px-2 ' + (key === hardwareType ? 'bg-blue-50 font-bold' : '')
-                        }, hardwareConfigs[key].usefulLifeMonths + ' mo')
-                      })
-                    ),
-                    h('tr', { className: 'border-b' },
-                      h('td', { className: 'py-2' }, 'Residual Value'),
-                      hardwareKeys.map(function(key) {
-                        return h('td', {
-                          key: key,
-                          className: 'text-right px-2 ' + (key === hardwareType ? 'bg-blue-50 font-bold' : '')
-                        }, Math.round(hardwareConfigs[key].residualPct * 100) + '%')
-                      })
-                    ),
-                    // Servers needed
+                    ['storagePerServer', 'costPerServer', 'powerPerServer', 'maintenancePerServer', 'usefulLifeMonths', 'residualPct'].map(function(field) {
+                      var labels = { storagePerServer: 'Storage / Server', costPerServer: 'Cost / Server', powerPerServer: 'Power / Server', maintenancePerServer: 'Maintenance / Server', usefulLifeMonths: 'Useful Life', residualPct: 'Residual Value' };
+                      return h('tr', { key: field, className: 'border-b' },
+                        h('td', { className: 'py-2' }, labels[field]),
+                        hardwareKeys.map(function(key) {
+                          var v = hardwareConfigs[key][field];
+                          var fmt = field === 'costPerServer' ? '$' + v.toLocaleString()
+                            : field === 'storagePerServer' ? v + ' PiB'
+                            : field === 'powerPerServer' ? v + ' kW'
+                            : field === 'maintenancePerServer' ? '$' + v + '/mo'
+                            : field === 'usefulLifeMonths' ? v + ' mo'
+                            : Math.round(v * 100) + '%';
+                          return h('td', { key: key, className: 'text-right px-2 ' + (key === hardwareType ? 'bg-blue-50 font-bold' : '') }, fmt);
+                        })
+                      );
+                    }),
                     h('tr', { className: 'border-b' },
                       h('td', { className: 'py-2' }, 'Servers (' + storageCapacity + ' PiB)'),
                       hardwareKeys.map(function(key) {
-                        return h('td', {
-                          key: key,
-                          className: 'text-right px-2 ' + (key === hardwareType ? 'bg-blue-50 font-bold' : '')
-                        }, Math.ceil(storageCapacity / hardwareConfigs[key].storagePerServer))
+                        return h('td', { key: key, className: 'text-right px-2 ' + (key === hardwareType ? 'bg-blue-50 font-bold' : '') },
+                          Math.ceil(storageCapacity / hardwareConfigs[key].storagePerServer)
+                        );
                       })
                     ),
-                    // Total hardware cost
                     h('tr', { className: 'border-b font-bold' },
                       h('td', { className: 'py-2' }, 'Total Hardware Cost'),
                       hardwareKeys.map(function(key) {
-                        var servers = Math.ceil(storageCapacity / hardwareConfigs[key].storagePerServer);
-                        return h('td', {
-                          key: key,
-                          className: 'text-right px-2 ' + (key === hardwareType ? 'bg-blue-50 text-blue-700' : '')
-                        }, '$' + (servers * hardwareConfigs[key].costPerServer).toLocaleString())
+                        var s = Math.ceil(storageCapacity / hardwareConfigs[key].storagePerServer);
+                        return h('td', { key: key, className: 'text-right px-2 ' + (key === hardwareType ? 'bg-blue-50 text-blue-700' : '') },
+                          '$' + (s * hardwareConfigs[key].costPerServer).toLocaleString()
+                        );
                       })
                     ),
-                    // Monthly power cost
                     h('tr', { className: 'font-bold' },
                       h('td', { className: 'py-2' }, 'Monthly Power'),
                       hardwareKeys.map(function(key) {
-                        var servers = Math.ceil(storageCapacity / hardwareConfigs[key].storagePerServer);
-                        return h('td', {
-                          key: key,
-                          className: 'text-right px-2 ' + (key === hardwareType ? 'bg-blue-50 text-red-700' : '')
-                        }, '$' + Math.round(servers * hardwareConfigs[key].powerPerServer * 24 * 30 * powerCost).toLocaleString())
+                        var s = Math.ceil(storageCapacity / hardwareConfigs[key].storagePerServer);
+                        return h('td', { key: key, className: 'text-right px-2 ' + (key === hardwareType ? 'bg-blue-50 text-red-700' : '') },
+                          '$' + Math.round(s * hardwareConfigs[key].powerPerServer * 24 * 30 * powerCost).toLocaleString()
+                        );
                       })
                     )
                   )
@@ -1079,8 +1062,7 @@
             ),
 
             // Capital Expenditure
-            h('div', { className: 'mb-8' },
-              h('h2', { className: 'text-2xl font-bold mb-4 text-blue-900' }, 'Capital Expenditure'),
+            h(Section, { title: 'Capital Expenditure', open: sections.capex, onToggle: function() { toggleSection('capex'); } },
               h('div', { className: 'bg-gray-50 p-4 rounded-lg overflow-x-auto' },
                 h('table', { className: 'w-full text-sm' },
                   h('thead', {},
@@ -1101,18 +1083,14 @@
                     h('tr', { className: 'border-b' },
                       h('td', { className: 'py-2' }, 'Pledge Collateral (locked)'),
                       h('td', { className: 'text-right' }, Math.round(totalPledgeFil).toLocaleString() + ' FIL'),
-                      h('td', { className: 'text-right' }, pledgePerSector + ' FIL/sector × ' + totalSectors.toLocaleString() + ' sectors'),
-                      h('td', { className: 'text-right font-bold text-orange-600' },
-                        '$' + Math.round(totalPledgeCad).toLocaleString()
-                      )
+                      h('td', { className: 'text-right' }, pledgePerSector + ' FIL/sector x ' + totalSectors.toLocaleString() + ' sectors'),
+                      h('td', { className: 'text-right font-bold text-orange-600' }, '$' + Math.round(totalPledgeCad).toLocaleString())
                     ),
                     h('tr', { className: 'border-b' },
                       h('td', { className: 'py-2' }, 'Down Payment (' + downPaymentPct + '%)'),
                       h('td', { className: 'text-right' }, '-'),
                       h('td', { className: 'text-right' }, '-'),
-                      h('td', { className: 'text-right font-bold text-red-600' },
-                        '$(' + Math.round(totalHardwareCost * downPayment).toLocaleString() + ')'
-                      )
+                      h('td', { className: 'text-right font-bold text-red-600' }, '$(' + Math.round(totalHardwareCost * downPayment).toLocaleString() + ')')
                     ),
                     h('tr', { className: 'border-b' },
                       h('td', { className: 'py-2' }, 'Financed Amount'),
@@ -1124,9 +1102,7 @@
                       h('td', { className: 'py-2 font-bold' }, 'Monthly Loan Payment'),
                       h('td', { className: 'text-right' }, '-'),
                       h('td', { className: 'text-right' }, '-'),
-                      h('td', { className: 'text-right font-bold text-blue-700' },
-                        '$' + Math.round(monthlyPayment).toLocaleString() + '/mo'
-                      )
+                      h('td', { className: 'text-right font-bold text-blue-700' }, '$' + Math.round(monthlyPayment).toLocaleString() + '/mo')
                     )
                   )
                 )
@@ -1134,8 +1110,7 @@
             ),
 
             // Monthly Operating Expenses
-            h('div', { className: 'mb-8' },
-              h('h2', { className: 'text-2xl font-bold mb-4 text-blue-900' }, 'Monthly Operating Expenses'),
+            h(Section, { title: 'Monthly Operating Expenses', open: sections.opex, onToggle: function() { toggleSection('opex'); } },
               h('div', { className: 'bg-gray-50 p-4 rounded-lg overflow-x-auto' },
                 h('table', { className: 'w-full text-sm' },
                   h('thead', {},
@@ -1148,12 +1123,12 @@
                   h('tbody', {},
                     h('tr', { className: 'border-b' },
                       h('td', { className: 'py-2' }, 'Electricity'),
-                      h('td', { className: 'text-right' }, totalPowerKw.toFixed(1) + ' kW × $' + powerCost + '/kWh'),
+                      h('td', { className: 'text-right' }, totalPowerKw.toFixed(1) + ' kW x $' + powerCost + '/kWh'),
                       h('td', { className: 'text-right' }, '$' + Math.round(monthlyPowerCost).toLocaleString())
                     ),
                     h('tr', { className: 'border-b' },
                       h('td', { className: 'py-2' }, 'Datacenter Space'),
-                      h('td', { className: 'text-right' }, rackSpaceNeeded + ' racks × $350/rack'),
+                      h('td', { className: 'text-right' }, rackSpaceNeeded + ' racks x $350/rack'),
                       h('td', { className: 'text-right' }, '$' + Math.round(monthlySpaceCost).toLocaleString())
                     ),
                     h('tr', { className: 'border-b' },
@@ -1163,7 +1138,7 @@
                     ),
                     h('tr', { className: 'border-b' },
                       h('td', { className: 'py-2' }, 'Maintenance & Spares'),
-                      h('td', { className: 'text-right' }, serversNeeded + ' servers × $' + hardware.maintenancePerServer),
+                      h('td', { className: 'text-right' }, serversNeeded + ' servers x $' + hardware.maintenancePerServer),
                       h('td', { className: 'text-right' }, '$' + Math.round(monthlyMaintenance).toLocaleString())
                     ),
                     h('tr', { className: 'border-b' },
@@ -1178,7 +1153,7 @@
                     ),
                     h('tr', { className: 'border-b' },
                       h('td', { className: 'py-2' }, 'On-Chain Gas Fees'),
-                      h('td', { className: 'text-right' }, dailyGasCost + ' FIL/day × $' + filPriceCad.toFixed(2) + ' CAD'),
+                      h('td', { className: 'text-right' }, dailyGasCost + ' FIL/day x $' + filPriceCad.toFixed(2) + ' CAD'),
                       h('td', { className: 'text-right' }, '$' + Math.round(monthlyGasCost).toLocaleString())
                     ),
                     h('tr', { className: 'font-bold' },
@@ -1192,8 +1167,7 @@
             ),
 
             // Revenue Model
-            h('div', { className: 'mb-8' },
-              h('h2', { className: 'text-2xl font-bold mb-4 text-blue-900' }, 'Revenue Model (with Datacap)'),
+            h(Section, { title: 'Revenue Model (with Datacap)', open: sections.revenue, onToggle: function() { toggleSection('revenue'); } },
               h('div', { className: 'bg-green-50 p-4 rounded-lg mb-4' },
                 h('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-4 text-sm' },
                   h('div', {},
@@ -1217,94 +1191,70 @@
               h('div', { className: 'bg-gray-50 p-4 rounded-lg' },
                 h('div', { className: 'text-sm text-gray-600 mb-2' }, 'Monthly Revenue Calculation'),
                 h('div', { className: 'text-base' },
-                  storageCapacity + ' PiB × 1,024 TiB/PiB × ' + totalRewardRate.toFixed(2) +
-                  ' FIL/TiB/day × 30 days × $' + filPriceCad.toFixed(2) + ' CAD/FIL'
+                  storageCapacity + ' PiB x 1,024 TiB/PiB x ' + totalRewardRate.toFixed(2) + ' FIL/TiB/day x 30 days x $' + filPriceCad.toFixed(2) + ' CAD/FIL'
                 ),
-                h('div', { className: 'text-2xl font-bold text-green-700 mt-2' },
-                  '= $' + Math.round(monthlyRevenue).toLocaleString() + ' CAD/month'
-                )
+                h('div', { className: 'text-2xl font-bold text-green-700 mt-2' }, '= $' + Math.round(monthlyRevenue).toLocaleString() + ' CAD/month')
               )
             ),
 
-            // Key Metrics Summary
-            h('div', { className: 'bg-gray-100 p-6 rounded-lg mb-8' },
-              h('h2', { className: 'text-xl font-bold mb-3' }, 'Key Financial Metrics'),
-              h('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-4 text-sm' },
-                h('div', {},
-                  h('div', { className: 'font-bold mb-2' }, 'Monthly Cash Flow'),
-                  h('div', {}, 'Revenue: $' + Math.round(monthlyRevenue).toLocaleString()),
-                  h('div', {}, 'OPEX: $' + Math.round(totalMonthlyOpex).toLocaleString()),
-                  h('div', {}, 'Loan Payment: $' + Math.round(monthlyPayment).toLocaleString()),
-                  h('div', { className: 'font-bold text-green-700 mt-2' },
-                    'Net Profit: $' + Math.round(monthlyRevenue - totalMonthlyOpex - monthlyPayment).toLocaleString()
+            // Key Financial Metrics
+            h(Section, { title: 'Key Financial Metrics', open: sections.metrics, onToggle: function() { toggleSection('metrics'); } },
+              h('div', { className: 'bg-gray-100 p-6 rounded-lg' },
+                h('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-4 text-sm' },
+                  h('div', {},
+                    h('div', { className: 'font-bold mb-2' }, 'Monthly Cash Flow'),
+                    h('div', {}, 'Revenue: $' + Math.round(monthlyRevenue).toLocaleString()),
+                    h('div', {}, 'OPEX: $' + Math.round(totalMonthlyOpex).toLocaleString()),
+                    h('div', {}, 'Loan Payment: $' + Math.round(monthlyPayment).toLocaleString()),
+                    h('div', { className: 'font-bold text-green-700 mt-2' }, 'Net Profit: $' + Math.round(monthlyRevenue - totalMonthlyOpex - monthlyPayment).toLocaleString())
+                  ),
+                  h('div', {},
+                    h('div', { className: 'font-bold mb-2' }, 'Annual Projections'),
+                    h('div', {}, 'Annual Revenue: $' + Math.round(monthlyRevenue * 12).toLocaleString()),
+                    h('div', {}, 'Annual OPEX: $' + Math.round(totalMonthlyOpex * 12).toLocaleString()),
+                    h('div', { className: 'font-bold text-green-700 mt-2' }, 'Annual Profit: $' + Math.round(yearlyProfit).toLocaleString())
+                  ),
+                  h('div', {},
+                    h('div', { className: 'font-bold mb-2' }, 'Investment Returns'),
+                    h('div', {}, 'Total Investment: $' + totalHardwareCost.toLocaleString()),
+                    h('div', {}, 'Down Payment: $' + Math.round(totalHardwareCost * downPayment).toLocaleString()),
+                    h('div', {}, 'Pledge Collateral: $' + Math.round(totalPledgeCad).toLocaleString() + ' (' + Math.round(totalPledgeFil).toLocaleString() + ' FIL)'),
+                    h('div', {}, 'Break-even: ' + (breakEvenMonth ? breakEvenMonth + ' months' : '>' + projectionMonths + ' mo')),
+                    h('div', { className: 'font-bold text-green-700 mt-2' }, 'ROI: ' + roi.toFixed(1) + '%')
                   )
-                ),
-                h('div', {},
-                  h('div', { className: 'font-bold mb-2' }, 'Annual Projections'),
-                  h('div', {}, 'Annual Revenue: $' + Math.round(monthlyRevenue * 12).toLocaleString()),
-                  h('div', {}, 'Annual OPEX: $' + Math.round(totalMonthlyOpex * 12).toLocaleString()),
-                  h('div', { className: 'font-bold text-green-700 mt-2' },
-                    'Annual Profit: $' + Math.round(yearlyProfit).toLocaleString()
-                  )
-                ),
-                h('div', {},
-                  h('div', { className: 'font-bold mb-2' }, 'Investment Returns'),
-                  h('div', {}, 'Total Investment: $' + totalHardwareCost.toLocaleString()),
-                  h('div', {}, 'Down Payment: $' + Math.round(totalHardwareCost * downPayment).toLocaleString()),
-                  h('div', {}, 'Pledge Collateral: $' + Math.round(totalPledgeCad).toLocaleString() + ' (' + Math.round(totalPledgeFil).toLocaleString() + ' FIL)'),
-                  h('div', {}, 'Break-even: ' + (breakEvenMonth ? breakEvenMonth + ' months' : '>' + projectionMonths + ' mo')),
-                  h('div', { className: 'font-bold text-green-700 mt-2' }, 'ROI: ' + roi.toFixed(1) + '%')
                 )
               )
             ),
 
             // Exit Valuation
-            h('div', { className: 'mb-8' },
-              h('h2', { className: 'text-2xl font-bold mb-4 text-blue-900' }, 'Exit Valuation at Month ' + exitMonth),
-              h('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-4 mb-4' },
-                // Left: breakdown table
+            h(Section, { title: 'Exit Valuation at Month ' + exitMonth, open: sections.exit, onToggle: function() { toggleSection('exit'); } },
+              h('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-4' },
                 h('div', { className: 'bg-gray-50 p-4 rounded-lg' },
                   h('table', { className: 'w-full text-sm' },
                     h('tbody', {},
                       h('tr', { className: 'border-b' },
                         h('td', { className: 'py-2 text-gray-600' }, 'Cumulative Operating Profit'),
-                        h('td', { className: 'text-right py-2 font-bold ' + (exitOperatingProfit >= 0 ? 'text-green-700' : 'text-red-600') },
-                          '$' + Math.round(exitOperatingProfit).toLocaleString()
-                        )
+                        h('td', { className: 'text-right py-2 font-bold ' + (exitOperatingProfit >= 0 ? 'text-green-700' : 'text-red-600') }, '$' + Math.round(exitOperatingProfit).toLocaleString())
                       ),
                       h('tr', { className: 'border-b' },
                         h('td', { className: 'py-2 text-gray-600' }, 'Down Payment (sunk cost)'),
-                        h('td', { className: 'text-right py-2 font-bold text-red-600' },
-                          '-$' + Math.round(totalHardwareCost * downPayment).toLocaleString()
-                        )
+                        h('td', { className: 'text-right py-2 font-bold text-red-600' }, '-$' + Math.round(totalHardwareCost * downPayment).toLocaleString())
                       ),
                       h('tr', { className: 'border-b' },
-                        h('td', { className: 'py-2 text-gray-600' },
-                          'Hardware Resale (' + Math.round(hwDepreciationPct * 100) + '% of $' + totalHardwareCost.toLocaleString() + ')'
-                        ),
-                        h('td', { className: 'text-right py-2 font-bold text-green-700' },
-                          '+$' + Math.round(hardwareResidualValue).toLocaleString()
-                        )
+                        h('td', { className: 'py-2 text-gray-600' }, 'Hardware Resale (' + Math.round(hwDepreciationPct * 100) + '%)'),
+                        h('td', { className: 'text-right py-2 font-bold text-green-700' }, '+$' + Math.round(hardwareResidualValue).toLocaleString())
                       ),
                       h('tr', { className: 'border-b' },
-                        h('td', { className: 'py-2 text-gray-600' },
-                          'Pledge Returned (' + Math.round(totalPledgeFil).toLocaleString() + ' FIL)'
-                        ),
-                        h('td', { className: 'text-right py-2 font-bold text-green-700' },
-                          '+$' + Math.round(pledgeReturnedCad).toLocaleString()
-                        )
+                        h('td', { className: 'py-2 text-gray-600' }, 'Pledge Returned (' + Math.round(totalPledgeFil).toLocaleString() + ' FIL)'),
+                        h('td', { className: 'text-right py-2 font-bold text-green-700' }, '+$' + Math.round(pledgeReturnedCad).toLocaleString())
                       ),
                       h('tr', { className: 'border-b' },
                         h('td', { className: 'py-2 text-gray-600' }, 'Pledge Paid (upfront)'),
-                        h('td', { className: 'text-right py-2 font-bold text-red-600' },
-                          '-$' + Math.round(totalPledgeCad).toLocaleString()
-                        )
+                        h('td', { className: 'text-right py-2 font-bold text-red-600' }, '-$' + Math.round(totalPledgeCad).toLocaleString())
                       ),
                       remainingLoanBalance > 0 ? h('tr', { className: 'border-b' },
-                        h('td', { className: 'py-2 text-gray-600' }, 'Loan Payoff (remaining balance)'),
-                        h('td', { className: 'text-right py-2 font-bold text-red-600' },
-                          '-$' + Math.round(remainingLoanBalance).toLocaleString()
-                        )
+                        h('td', { className: 'py-2 text-gray-600' }, 'Loan Payoff (remaining)'),
+                        h('td', { className: 'text-right py-2 font-bold text-red-600' }, '-$' + Math.round(remainingLoanBalance).toLocaleString())
                       ) : h('tr', { className: 'border-b' },
                         h('td', { className: 'py-2 text-gray-600' }, 'Loan Payoff'),
                         h('td', { className: 'text-right py-2 font-bold text-green-700' }, 'Paid off')
@@ -1318,7 +1268,6 @@
                     )
                   )
                 ),
-                // Right: summary cards
                 h('div', { className: 'space-y-3' },
                   h('div', { className: 'p-4 rounded-lg ' + (netExitValue >= 0 ? 'bg-green-50' : 'bg-red-50') },
                     h('div', { className: 'text-sm text-gray-600' }, 'Net Position at Exit'),
@@ -1326,13 +1275,11 @@
                       (netExitValue >= 0 ? '+' : '') + '$' + Math.round(netExitValue).toLocaleString() + ' CAD'
                     ),
                     h('div', { className: 'text-xs text-gray-500 mt-1' },
-                      netExitValue >= 0
-                        ? 'Profitable exit — you walk away with a gain'
-                        : 'Exiting now would result in a loss'
+                      netExitValue >= 0 ? 'Profitable exit' : 'Exiting now would result in a loss'
                     )
                   ),
                   h('div', { className: 'bg-gray-50 p-4 rounded-lg' },
-                    h('div', { className: 'text-sm text-gray-600 mb-2' }, 'Asset Recovery Breakdown'),
+                    h('div', { className: 'text-sm text-gray-600 mb-2' }, 'Asset Recovery'),
                     h('div', { className: 'grid grid-cols-2 gap-3 text-xs' },
                       h('div', {},
                         h('div', { className: 'text-gray-500' }, 'Hardware Resale'),
@@ -1354,54 +1301,24 @@
                         : 'Loan fully paid off'
                     ),
                     h('div', { className: 'text-xs mt-1' },
-                      'Pledge lock-up: ' + (exitMonth >= sectorDuration ? 'Sectors expired — FIL unlocked' : (sectorDuration - exitMonth) + ' months until sector expiry')
+                      exitMonth >= sectorDuration ? 'Sectors expired -- FIL unlocked' : (sectorDuration - exitMonth) + ' months until sector expiry'
                     )
                   )
                 )
               )
-            ),
-
-            // Key Assumptions
-            h('div', { className: 'bg-blue-50 p-6 rounded-lg' },
-              h('h2', { className: 'text-xl font-bold mb-3' }, 'Key Assumptions'),
-              h('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-4 text-sm' },
-                h('ul', { className: 'space-y-1' },
-                  h('li', { className: 'font-bold text-blue-800' }, 'Market & Financing'),
-                  h('li', {}, '• FIL price: $' + filPrice.toFixed(2) + ' USD (LIVE from CoinGecko)'),
-                  h('li', {}, '• USD/CAD: ' + exchangeRate),
-                  h('li', {}, '• Hardware: ' + hardware.name),
-                  h('li', {}, '• Quebec power: $' + powerCost + '/kWh'),
-                  h('li', {}, '• ' + downPaymentPct + '% down, ' + interestRatePct + '% APR, ' + loanTermMonths + ' mo term')
-                ),
-                h('ul', { className: 'space-y-1' },
-                  h('li', { className: 'font-bold text-blue-800' }, 'Filecoin Network'),
-                  h('li', {}, '• Block reward: ' + blockReward + ' FIL/TiB/day'),
-                  h('li', {}, '• Datacap multiplier: ' + datacapMultiplier + 'x'),
-                  h('li', {}, '• Pledge: ' + pledgePerSector + ' FIL/sector'),
-                  h('li', {}, '• Gas cost: ' + dailyGasCost + ' FIL/day'),
-                  h('li', {}, '• Sector duration: ' + sectorDuration + ' months')
-                ),
-                h('ul', { className: 'space-y-1' },
-                  h('li', { className: 'font-bold text-blue-800' }, 'Operational'),
-                  h('li', {}, '• 95% uptime/quality score'),
-                  h('li', {}, '• No slashing penalties assumed'),
-                  h('li', {}, '• Steady state reached month 3'),
-                  h('li', {}, '• No regulatory changes'),
-                  h('li', {}, '• 75% block reward vests over 180 days')
-                )
-              )
             )
+
           );
         }
 
-        // Render the app
+        // Render
         try {
-          const root = ReactDOM.createRoot(document.getElementById('root'));
+          var root = ReactDOM.createRoot(document.getElementById('root'));
           root.render(React.createElement(FilecoinBusinessPlan));
-          console.log('✅ App loaded successfully!');
+          console.log('App loaded');
         } catch (error) {
-          console.error('❌ Error:', error);
-          document.getElementById('root').innerHTML = '<div style="padding: 2rem; color: red;">Error loading app. Check console.</div>';
+          console.error('Error:', error);
+          document.getElementById('root').innerHTML = '<div style="padding:2rem;color:red;">Error loading app. Check console.</div>';
         }
     </script>
 </body>
